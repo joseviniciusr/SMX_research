@@ -2,6 +2,8 @@ from typing import Dict, List, Tuple, Optional, Union, Callable, Literal
 import warnings
 import pandas as pd
 import numpy as np
+from sklearn.base import accuracy_score
+from sklearn.metrics import f1_score
 
 def extract_spectral_zones(Xcal, cuts):
     """
@@ -1601,9 +1603,7 @@ def calculate_predicate_perturbation(
             # 7. CALCULAR IMPORTÂNCIA BASEADA NO AIM E MÉTRICA ESCOLHIDA
             
             if aim == 'regression':
-                # =====================================================================
                 # MODO REGRESSÃO: usa predict() e métricas numéricas contínuas
-                # =====================================================================
                 
                 # Fazer predição com dados originais
                 y_pred_original = estimator.predict(X_eval)
@@ -1633,9 +1633,7 @@ def calculate_predicate_perturbation(
                     importance_for_ranking = importance
                     
             else:  # aim == 'classification'
-                # =====================================================================
                 # MODO CLASSIFICAÇÃO: usa predict(), predict_proba() ou decision_function()
-                # =====================================================================
                 
                 if metric == 'prediction_change_rate':
                     # -----------------------------------------------------------------
@@ -1720,8 +1718,8 @@ def calculate_predicate_perturbation(
                     # e depois fazemos a média entre amostras.
                     #
                     # Exemplo binário: [0.7, 0.3] → [0.6, 0.4]
-                    # - Sem correção: mean(|0.7-0.6| + |0.3-0.4|) = mean(0.1 + 0.1) = 0.2 ❌
-                    # - Com correção: mean(|0.7-0.6| + |0.3-0.4|) / 2 = 0.1 ✓
+                    # - Sem correção: mean(|0.7-0.6| + |0.3-0.4|) = mean(0.1 + 0.1) = 0.2 
+                    # - Com correção: mean(|0.7-0.6| + |0.3-0.4|) / 2 = 0.1
                     #
                     # Para k classes, dividimos por k para normalizar e obter valores
                     # comparáveis entre problemas binários e multiclasse.
@@ -2191,13 +2189,13 @@ def build_predicate_graph(bags_result, predicate_ranking_dict,
             DG.add_node(pred_current, node_type='predicate')
             DG.add_node(pred_next, node_type='predicate')
             
-            ranking_value = float(ranking_lookup[pred_current])
+            ranking_value = float(ranking_lookup[pred_current]) # valor da métrica do predicado de ORIGEM
             
             # Ponderar pela variância explicada se var_exp=True
             if var_exp:
-                zone_name = extract_zone_from_predicate(pred_current)
-                if zone_name in pca_info_dict:
-                    ranking_value *= pca_info_dict[zone_name]['variance_explained']
+                zone_name = extract_zone_from_predicate(pred_current) # extrai zona do predicado atual
+                if zone_name in pca_info_dict: # verifica se zona existe no dicionário de PCA
+                    ranking_value *= pca_info_dict[zone_name]['variance_explained'] # pondera pelo VE da zona
             
             # Acumular peso se aresta já existe
             if DG.has_edge(pred_current, pred_next):
@@ -2214,7 +2212,7 @@ def build_predicate_graph(bags_result, predicate_ranking_dict,
         majority_class = class_counts.idxmax()
         terminal_node = f'Class_{majority_class}'
         
-        ranking_last_value = float(ranking_lookup[last_pred])
+        ranking_last_value = float(ranking_lookup[last_pred]) # valor da métrica do último predicado é o peso da aresta para o terminal
         
         if var_exp:
             zone_name = extract_zone_from_predicate(last_pred)
