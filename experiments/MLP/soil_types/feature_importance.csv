@@ -1,0 +1,23 @@
+Shap;Permutation;LRC_perturbation;LRC_covariance
+Fe ka;Fe ka;Fe ka;Fe ka
+Fe kb;Fe kb;Fe kb;Fe kb
+Ca ka;Ca ka;Ca ka;Mn
+Mn;Ti ka;background1;sum Fe
+background1;Si;Ti ka;Ti kb
+Ni;Mn;background2;Rh L + Ar
+Ti ka;sum Fe;Zn;Cr
+Cu;Rh L + Ar;Cu;Ti ka
+Cr;Cr;Si;Si
+Ca kb;Cu;Mn;Cu
+background2;Ca kb;Rh L + Ar;Ca ka
+Al;Ti kb;Ni;Al
+Si;P;P;background1
+P;K;sum Fe;Ca kb
+Rh L + Ar;background1;Ca kb;background2
+Zn;Al;K;Zn
+S;Zn;Fe ka + Ti ka;Ni
+K;background2;Cr;K
+sum Fe;Ni;Ti kb;P
+Fe ka + Ti ka;Fe ka + Ti ka;Al;Fe ka + Ti ka
+Ti kb;S;S;S
+;;;

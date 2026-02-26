@@ -1,0 +1,24 @@
+Shap;Permutation;LRC_perturbation;LRC_covariance
+Ca ka;K;K;Fe ka
+Fe ka;Fe ka;Ca ka;K
+K;Ca ka;Fe ka;Ca ka
+Si;Si;Si;Si
+Ca kb;Ca kb;Mn;Ti ka
+Ti ka;Ti ka;Ca kb;Fe kb
+Rh L + Ar;P;S;Ca kb
+background3;Mn;background3;Rh L + Ar
+Mn;Rh L + Ar;Rh L + Ar;background3
+background2;Fe kb;Fe kb;Compton scattering
+P;S;Ti ka;Al
+Compton scattering;Ni;Ti kb;Rayleight scattering
+sum Fe;Al;P;sum Fe
+Fe kb;sum Fe;background2;P
+S;background3;sum Fe;Ti kb
+Ni;background2;Cu;background2
+Ti kb;Ti kb;Al;Mn
+Al;Cu;Compton scattering;Cu
+Rayleight scattering;Compton scattering;Ni;S
+background1;Zn;background1;Ni
+Cu;Rayleight scattering;Rayleight scattering;Zn
+Zn;background1;Zn;background1
+;;;
