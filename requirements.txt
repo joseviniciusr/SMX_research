@@ -1,0 +1,11 @@
+numpy
+pandas
+scikit-learn
+scipy
+shap
+plotly
+rbo
+kennard-stone
+ipykernel
+networkx
+nbformat>=4.2.0
