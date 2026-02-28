@@ -10,6 +10,7 @@ import numpy as np
 import kennard_stone as ks
 import plotly.graph_objects as go
 import rbo
+import json
 import sys
 from pathlib import Path
 
@@ -25,6 +26,14 @@ if str(smx_dir) not in sys.path:
 import preprocessings as prepr
 from modeling import pls_optimized
 import explaining as exp
+
+# ── Load config ──────────────────────────────────────────────────────────────
+with open(workspace_root / 'real_datasets/xrf/soil.json') as f:
+    config = json.load(f)
+
+LVmax = config['LVmax']
+aim = config['aim']
+spectral_cuts = [tuple(sc) for sc in config['spectral_cuts']]
 
 # ── Load data ────────────────────────────────────────────────────────────────
 data_complete = pd.read_csv(
@@ -57,7 +66,7 @@ Xpredclass_prep = (Xpredclass / np.sqrt(mean_calclass)) - mean_calclass_poisson
 plsda_results = pls_optimized(
     Xcalclass_prep,
     ycalclass,
-    LVmax=4,
+    LVmax=LVmax,
     Xpred=Xpredclass_prep,
     ypred=ypredclass,
     aim='classification',
@@ -68,32 +77,10 @@ pls_model = plsda_results[3]
 vip_scores_mat = plsda_results[4]
 y_pred_cont = plsda_results[5].iloc[:, -1]
 
-# Quick VIP plot
-vip_scores_mat.T.plot().show()
+# Quick VIP plot (saved to HTML)
+vip_scores_mat.T.plot().write_html(SCRIPT_DIR / 'vip_plot.html')
 
-# ── Spectral cuts ────────────────────────────────────────────────────────────
-spectral_cuts = [
-    ('Al', 1.33, 1.63),
-    ('Si', 1.63, 1.86),
-    ('P', 1.86, 2.19),
-    ('S', 2.19, 2.55),
-    ('Rh L + Ar', 2.55, 3.21),
-    ('K', 3.21, 3.53),
-    ('Ca ka', 3.53, 3.84),
-    ('Ca kb', 3.84, 4.37),
-    ('Ti ka', 4.37, 4.75),
-    ('Ti kb', 4.75, 5.12),
-    ('Cr', 5.12, 5.77),
-    ('Mn', 5.77, 6.13),
-    ('Fe ka', 6.13, 6.80),
-    ('Fe kb', 6.80, 7.30),
-    ('background1', 7.30, 7.91),
-    ('Cu', 7.91, 8.20),
-    ('background2', 8.20, 10.69),
-    ('Fe ka + Ti ka', 10.69, 11.14),
-    ('background3', 11.14, 12.55),
-    ('sum Fe', 12.55, 13.1),
-]
+# spectral_cuts, LVmax, and aim loaded from soil.json
 
 # ── VIP scores per zone ─────────────────────────────────────────────────────
 vip_scores_df = pd.DataFrame({
@@ -323,7 +310,7 @@ fig.update_layout(
     template='plotly_white', showlegend=True,
     legend=dict(yanchor="top", y=0.99, xanchor="left", x=0.01)
 )
-fig.show()
+fig.write_html(SCRIPT_DIR / 'threshold_cov_plot.html')
 
 # ── Perturbation-based LRC (multiple seeds) ──────────────────────────────────
 all_results_pert = {}
@@ -360,7 +347,7 @@ for seed in random_seeds:
         spectral_cuts=spectral_cuts,
         perturbation_mode='median',
         stats_source='full',
-        aim='regression',
+        aim=aim,
         metric='mean_abs_diff',
         verbose=True
     )
@@ -491,7 +478,7 @@ fig.update_layout(
     template='plotly_white', showlegend=True,
     legend=dict(yanchor="top", y=0.99, xanchor="left", x=0.01)
 )
-fig.show()
+fig.write_html(SCRIPT_DIR / 'threshold_pert_plot.html')
 
 # ── Permutation importance ───────────────────────────────────────────────────
 n_repeats = 10
