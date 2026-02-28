@@ -33,6 +33,7 @@ with open(workspace_root / 'real_datasets/xrf/soil.json') as f:
 
 LVmax = config['LVmax']
 aim = config['aim']
+random_seeds = config['random_seeds']
 spectral_cuts = [tuple(sc) for sc in config['spectral_cuts']]
 
 # ── Load data ────────────────────────────────────────────────────────────────
@@ -83,54 +84,54 @@ vip_scores_mat.T.plot().write_html(SCRIPT_DIR / 'vip_plot.html')
 # spectral_cuts, LVmax, and aim loaded from soil.json
 
 # ── VIP scores per zone ─────────────────────────────────────────────────────
-vip_scores_df = pd.DataFrame({
-    'energy': vip_scores_mat.T.index,
-    'VIP_Score': vip_scores_mat.T.iloc[:, 0].values
-})
-vip_scores_df = vip_scores_df.sort_values(by='VIP_Score', ascending=False).reset_index(drop=True)
+# vip_scores_df = pd.DataFrame({
+#     'energy': vip_scores_mat.T.index,
+#     'VIP_Score': vip_scores_mat.T.iloc[:, 0].values
+# })
+# vip_scores_df = vip_scores_df.sort_values(by='VIP_Score', ascending=False).reset_index(drop=True)
 
-energy_to_zone_vip = {}
-for zone_name, start, end in spectral_cuts:
-    for e in vip_scores_df['energy']:
-        ef = float(e)
-        if start <= ef <= end:
-            energy_to_zone_vip[e] = zone_name
-vip_scores_df['Zone'] = vip_scores_df['energy'].map(energy_to_zone_vip)
-vip_scores_unique_df = vip_scores_df.drop_duplicates(subset=['Zone'], keep='first').reset_index(drop=True)
-vip_scores_unique_df = vip_scores_unique_df.sort_values(by='VIP_Score', ascending=False).reset_index(drop=True)
+# energy_to_zone_vip = {}
+# for zone_name, start, end in spectral_cuts:
+#     for e in vip_scores_df['energy']:
+#         ef = float(e)
+#         if start <= ef <= end:
+#             energy_to_zone_vip[e] = zone_name
+# vip_scores_df['Zone'] = vip_scores_df['energy'].map(energy_to_zone_vip)
+# vip_scores_unique_df = vip_scores_df.drop_duplicates(subset=['Zone'], keep='first').reset_index(drop=True)
+# vip_scores_unique_df = vip_scores_unique_df.sort_values(by='VIP_Score', ascending=False).reset_index(drop=True)
 
 # ── Regression coefficients per zone ─────────────────────────────────────────
-reg_vet = pd.DataFrame(pls_model.coef_, columns=pls_model.feature_names_in_).T
-reg_vet.insert(0, 'energy', reg_vet.index)
-reg_vet = reg_vet.reset_index(drop=True)
-reg_vet.columns = ['energy', 'Reg_coef']
-reg_vet['Abs_Reg_coef'] = reg_vet['Reg_coef'].abs()
-reg_vet = reg_vet.sort_values(by='Abs_Reg_coef', ascending=False).reset_index(drop=True)
+# reg_vet = pd.DataFrame(pls_model.coef_, columns=pls_model.feature_names_in_).T
+# reg_vet.insert(0, 'energy', reg_vet.index)
+# reg_vet = reg_vet.reset_index(drop=True)
+# reg_vet.columns = ['energy', 'Reg_coef']
+# reg_vet['Abs_Reg_coef'] = reg_vet['Reg_coef'].abs()
+# reg_vet = reg_vet.sort_values(by='Abs_Reg_coef', ascending=False).reset_index(drop=True)
 
-energy_to_zone_reg = {}
-for zone_name, start, end in spectral_cuts:
-    for e in reg_vet['energy']:
-        ef = float(e)
-        if start <= ef <= end:
-            energy_to_zone_reg[e] = zone_name
-reg_vet['Zone'] = reg_vet['energy'].map(energy_to_zone_reg)
-reg_vet_unique_df = reg_vet.drop_duplicates(subset=['Zone'], keep='first').reset_index(drop=True)
-reg_vet_unique_df = reg_vet_unique_df.sort_values(by='Abs_Reg_coef', ascending=False).reset_index(drop=True)
+# energy_to_zone_reg = {}
+# for zone_name, start, end in spectral_cuts:
+#     for e in reg_vet['energy']:
+#         ef = float(e)
+#         if start <= ef <= end:
+#             energy_to_zone_reg[e] = zone_name
+# reg_vet['Zone'] = reg_vet['energy'].map(energy_to_zone_reg)
+# reg_vet_unique_df = reg_vet.drop_duplicates(subset=['Zone'], keep='first').reset_index(drop=True)
+# reg_vet_unique_df = reg_vet_unique_df.sort_values(by='Abs_Reg_coef', ascending=False).reset_index(drop=True)
 
 # ── SHAP per zone ────────────────────────────────────────────────────────────
-shap_global_importance = pd.read_csv(SCRIPT_DIR / 'shap_soil.csv', sep=';')
+# shap_global_importance = pd.read_csv(SCRIPT_DIR / 'shap_soil.csv', sep=';')
 
-energy_to_zone_shap = {}
-for zone_name, start, end in spectral_cuts:
-    for i in shap_global_importance['energy']:
-        i_float = float(i)
-        if start <= i_float <= end:
-            energy_to_zone_shap[i] = zone_name
-shap_global_importance['Zone'] = shap_global_importance['energy'].map(energy_to_zone_shap)
+# energy_to_zone_shap = {}
+# for zone_name, start, end in spectral_cuts:
+#     for i in shap_global_importance['energy']:
+#         i_float = float(i)
+#         if start <= i_float <= end:
+#             energy_to_zone_shap[i] = zone_name
+# shap_global_importance['Zone'] = shap_global_importance['energy'].map(energy_to_zone_shap)
 
-shap_unique_df = shap_global_importance.drop_duplicates(subset=['Zone'], keep='first').reset_index(drop=True)
-shap_unique_df = shap_unique_df.sort_values(by='Mean_Abs_SHAP', ascending=False).reset_index(drop=True)
-print(shap_unique_df)
+# shap_unique_df = shap_global_importance.drop_duplicates(subset=['Zone'], keep='first').reset_index(drop=True)
+# shap_unique_df = shap_unique_df.sort_values(by='Mean_Abs_SHAP', ascending=False).reset_index(drop=True)
+# print(shap_unique_df)
 
 # ── PCA aggregation ──────────────────────────────────────────────────────────
 spectral_zones_class = exp.extract_spectral_zones(Xcalclass_prep, spectral_cuts)
@@ -147,7 +148,6 @@ predicate_info_dict = exp.create_predicate_info_dict(
 )
 
 # ── Covariance-based LRC (multiple seeds) ────────────────────────────────────
-random_seeds = [0, 1, 2, 3]
 all_results_cov = {}
 training_samples = len(Xcalclass)
 y_pred_conticted_numeric = pd.Series(y_pred_cont)
@@ -520,9 +520,9 @@ print(permutation_unique_df)
 
 # ── Feature importance summary ───────────────────────────────────────────────
 max_len = max(
-    len(vip_scores_unique_df['Zone']),
-    len(reg_vet_unique_df['Zone']),
-    len(shap_unique_df['Zone']),
+    # len(vip_scores_unique_df['Zone']),
+    # len(reg_vet_unique_df['Zone']),
+    # len(shap_unique_df['Zone']),
     len(permutation_unique_df['Zone']),
     len(lrc_summed_unique_df_pert['Zone']),
     len(lrc_summed_unique_df_cov['Zone'])
@@ -534,9 +534,9 @@ def pad_list(lst, length):
 
 
 features_importance = pd.DataFrame({
-    'VIP_Score': pad_list(vip_scores_unique_df['Zone'], max_len),
-    'Reg_Coefficient': pad_list(reg_vet_unique_df['Zone'], max_len),
-    'Shap': pad_list(shap_unique_df['Zone'], max_len),
+    # 'VIP_Score': pad_list(vip_scores_unique_df['Zone'], max_len),
+    # 'Reg_Coefficient': pad_list(reg_vet_unique_df['Zone'], max_len),
+    # 'Shap': pad_list(shap_unique_df['Zone'], max_len),
     'Permutation': pad_list(permutation_unique_df['Zone'], max_len),
     'LRC_perturbation': pad_list(lrc_summed_unique_df_pert['Zone'], max_len),
     'LRC_covariance': pad_list(lrc_summed_unique_df_cov['Zone'], max_len),
@@ -546,28 +546,28 @@ features_importance.to_csv(SCRIPT_DIR / 'feature_importance.csv', index=False, s
 print(features_importance)
 
 # ── RBO rank comparison ──────────────────────────────────────────────────────
-rbo_comparison = pd.DataFrame(columns=['Method_1', 'Method_2', 'RBO_Score'])
-methods = features_importance.columns.tolist()
+# rbo_comparison = pd.DataFrame(columns=['Method_1', 'Method_2', 'RBO_Score'])
+# methods = features_importance.columns.tolist()
 
-for i in range(len(methods)):
-    for j in range(i + 1, len(methods)):
-        method_1 = methods[i]
-        method_2 = methods[j]
-        list_1 = [x for x in features_importance[method_1].tolist() if x is not None]
-        list_2 = [x for x in features_importance[method_2].tolist() if x is not None]
-        min_len = min(len(list_1), len(list_2))
-        list_1_trunc = list_1[:min_len]
-        list_2_trunc = list_2[:min_len]
-        rbo_score = rbo.RankingSimilarity(list_1_trunc, list_2_trunc).rbo(p=0.7, k=10)
-        rbo_comparison = pd.concat([rbo_comparison, pd.DataFrame({
-            'Method_1': [method_1],
-            'Method_2': [method_2],
-            'RBO_Score': [rbo_score]
-        })], ignore_index=True)
+# for i in range(len(methods)):
+#     for j in range(i + 1, len(methods)):
+#         method_1 = methods[i]
+#         method_2 = methods[j]
+#         list_1 = [x for x in features_importance[method_1].tolist() if x is not None]
+#         list_2 = [x for x in features_importance[method_2].tolist() if x is not None]
+#         min_len = min(len(list_1), len(list_2))
+#         list_1_trunc = list_1[:min_len]
+#         list_2_trunc = list_2[:min_len]
+#         rbo_score = rbo.RankingSimilarity(list_1_trunc, list_2_trunc).rbo(p=0.7, k=10)
+#         rbo_comparison = pd.concat([rbo_comparison, pd.DataFrame({
+#             'Method_1': [method_1],
+#             'Method_2': [method_2],
+#             'RBO_Score': [rbo_score]
+#         })], ignore_index=True)
 
-rbo_comparison.sort_values(by='RBO_Score', ascending=False, inplace=True)
-rbo_comparison.to_csv(SCRIPT_DIR / 'rbo_rank.csv', index=False, sep=';')
-print(rbo_comparison)
+# rbo_comparison.sort_values(by='RBO_Score', ascending=False, inplace=True)
+# rbo_comparison.to_csv(SCRIPT_DIR / 'rbo_rank.csv', index=False, sep=';')
+# print(rbo_comparison)
 
 # ── Save LRC natural-scale CSVs ─────────────────────────────────────────────
 lrc_summed_df_cov_natural.to_csv(SCRIPT_DIR / 'lrc_cov_natural.csv', index=False, sep=';')

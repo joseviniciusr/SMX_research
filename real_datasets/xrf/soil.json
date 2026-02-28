@@ -1,6 +1,7 @@
 {
     "LVmax": 4,
     "aim": "regression",
+    "random_seeds": [0, 1, 2, 3],
     "spectral_cuts": [
         ["Al", 1.33, 1.63],
         ["Si", 1.63, 1.86],
