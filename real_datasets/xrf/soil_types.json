@@ -1,6 +1,6 @@
 {
-  "name": "soil",
-  "csv_file": "soil.csv",
+  "name": "soil_types",
+  "csv_file": "soil_types.csv",
   "separator": ";",
   "class_column": "Class",
   "spectral_range": ["1.32", "13.1"],
@@ -27,18 +27,19 @@
     ["Mn", 5.77, 6.13],
     ["Fe ka", 6.13, 6.80],
     ["Fe kb", 6.80, 7.30],
-    ["background1", 7.30, 7.91],
+    ["Ni", 7.30, 7.91],
     ["Cu", 7.91, 8.20],
-    ["background2", 8.20, 10.69],
+    ["Zn", 8.20, 9.0],
+    ["background1", 9.0, 10.69],
     ["Fe ka + Ti ka", 10.69, 11.14],
-    ["background3", 11.14, 12.55],
+    ["background2", 11.14, 12.55],
     ["sum Fe", 12.55, 13.1]
   ],
 
   "compatible_models": ["pls", "mlp", "svm"],
   "model_params": {
     "pls": {
-      "LVmax": 4,
+      "LVmax": 2,
       "cv": 10
     },
     "mlp": {
