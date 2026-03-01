@@ -8,8 +8,6 @@ Generates: feature_importance.csv, rbo_rank.csv, lrc_cov_natural.csv, lrc_pert_n
 import pandas as pd
 import numpy as np
 import kennard_stone as ks
-import plotly.graph_objects as go
-import rbo
 import json
 import sys
 from pathlib import Path
@@ -193,26 +191,9 @@ for seed, lrc_df in lrc_cov_by_seed.items():
 print(lrc_cov_all_seeds_df)
 
 # ── Aggregate covariance LRC across seeds ────────────────────────────────────
-lrc_combined_list = []
-for seed in random_seeds:
-    lrc_combined_list.append(lrc_cov_by_seed[seed].copy())
-
-lrc_all_seeds = pd.concat(lrc_combined_list, ignore_index=True)
-
-lrc_summed_df_cov = lrc_all_seeds.groupby('Node').agg({
-    'Local_Reaching_Centrality': 'mean',
-    'Zone': 'first',
-    'Threshold': 'first',
-    'Operator': 'first'
-}).reset_index()
-
-lrc_summed_df_cov = lrc_summed_df_cov.sort_values(
-    by='Local_Reaching_Centrality', ascending=False
-).reset_index(drop=True)
-
-lrc_summed_unique_df_cov = lrc_summed_df_cov.drop_duplicates(
-    subset=['Zone'], keep='first'
-).reset_index(drop=True)
+lrc_summed_df_cov, lrc_summed_unique_df_cov = exp.aggregate_lrc_across_seeds(
+    lrc_cov_by_seed, random_seeds
+)
 print(lrc_summed_unique_df_cov)
 
 # ── Map covariance thresholds to natural scale ───────────────────────────────
@@ -227,49 +208,18 @@ lrc_summed_df_cov_natural = exp.map_thresholds_to_natural(
 print(lrc_summed_df_cov_natural)
 
 # ── Covariance threshold reconstruction plot ─────────────────────────────────
-n = 62
-zone_name = lrc_summed_df_cov_natural.iloc[n]['Zone']
-threshold_score = float(lrc_summed_df_cov_natural.iloc[n]['Threshold_Natural'])
 pca_info_dict_original = zones_original[1]
-
-threshold_spectrum = exp.reconstruct_threshold_to_spectrum(
-    threshold_value=threshold_score,
-    zone_name=zone_name,
-    pca_info_dict=pca_info_dict_original
+threshold_spectrum = exp.plot_threshold_spectrum(
+    lrc_natural_df=lrc_summed_df_cov_natural,
+    row_index=62,
+    spectral_zones_original=spectral_zones_original,
+    pca_info_dict_original=pca_info_dict_original,
+    y_labels=ycalclass,
+    output_path=SCRIPT_DIR / 'threshold_cov_plot.html',
 )
-print(f"\nEspectro de threshold reconstruído para zona '{zone_name}':")
+print(f"\nEspectro de threshold reconstruído (cov):")
 print(f"  - Dimensão: {len(threshold_spectrum)} variáveis espectrais")
-print(f"  - Range de energias: {threshold_spectrum.index[0]} - {threshold_spectrum.index[-1]}")
-print(f"  - Variância explicada pela PC1: {pca_info_dict_original[zone_name]['variance_explained']:.2%}")
-
-zone_df = spectral_zones_original[zone_name]
-fig = go.Figure()
-x_values = pd.to_numeric(zone_df.columns, errors='coerce')
-
-colors = {'A': 'gold', 'B': 'blue'}
-for idx, row in zone_df.iterrows():
-    class_label = ycalclass.iloc[idx] if idx < len(ycalclass) else 'Unknown'
-    fig.add_trace(go.Scatter(
-        x=x_values, y=row.values, mode='lines',
-        line=dict(color=colors.get(class_label, 'rgba(128,128,128,0.3)'), width=0.5),
-        name=f'Class {class_label}', showlegend=False, hoverinfo='skip'
-    ))
-
-fig.add_trace(go.Scatter(
-    x=x_values, y=threshold_spectrum.values, mode='lines',
-    line=dict(color='red', width=4, dash='dash'),
-    name=f'Threshold Spectrum ({threshold_spectrum.name})'
-))
-
-fig.update_layout(
-    title=f"Zona '{zone_name}' com Threshold Multivariado "
-          f"(Predicado: {lrc_summed_df_cov_natural.iloc[n]['Node_Natural']})",
-    xaxis_title='Energia / Comprimento de Onda',
-    yaxis_title='Intensidade',
-    template='plotly_white', showlegend=True,
-    legend=dict(yanchor="top", y=0.99, xanchor="left", x=0.01)
-)
-fig.write_html(SCRIPT_DIR / 'threshold_cov_plot.html')
+print(f"  - Variância explicada pela PC1: {pca_info_dict_original[lrc_summed_df_cov_natural.iloc[62]['Zone']]['variance_explained']:.2%}")
 
 # ── Perturbation-based LRC (multiple seeds) ──────────────────────────────────
 all_results_pert = {}
@@ -362,29 +312,9 @@ for seed, lrc_df in lrc_pert_by_seed.items():
 print(lrc_pert_all_seeds_df)
 
 # ── Aggregate perturbation LRC across seeds ──────────────────────────────────
-lrc_combined_list = []
-for seed in random_seeds:
-    lrc_combined_list.append(lrc_pert_by_seed[seed].copy())
-
-lrc_all_seeds = pd.concat(lrc_combined_list, ignore_index=True)
-
-lrc_summed_df_pert = lrc_all_seeds.groupby('Node').agg({
-    'Local_Reaching_Centrality': 'mean',
-    'Zone': 'first',
-    'Threshold': 'first',
-    'Operator': 'first'
-}).reset_index()
-
-lrc_summed_df_pert = lrc_summed_df_pert.sort_values(
-    by='Local_Reaching_Centrality', ascending=False
-).reset_index(drop=True)
-
-lrc_summed_unique_df_pert = lrc_summed_df_pert.drop_duplicates(
-    subset=['Zone'], keep='first'
-).reset_index(drop=True)
-lrc_summed_unique_df_pert = lrc_summed_unique_df_pert.sort_values(
-    by='Local_Reaching_Centrality', ascending=False
-).reset_index(drop=True)
+lrc_summed_df_pert, lrc_summed_unique_df_pert = exp.aggregate_lrc_across_seeds(
+    lrc_pert_by_seed, random_seeds
+)
 print(lrc_summed_unique_df_pert)
 
 # ── Map perturbation thresholds to natural scale ─────────────────────────────
@@ -396,84 +326,25 @@ lrc_summed_df_pert_natural = exp.map_thresholds_to_natural(
 print(lrc_summed_df_pert_natural)
 
 # ── Perturbation threshold reconstruction plot ───────────────────────────────
-n = 0
-zone_name = lrc_summed_df_pert_natural.iloc[n]['Zone']
-threshold_score = float(lrc_summed_df_pert_natural.iloc[n]['Threshold_Natural'])
-pca_info_dict_original = zones_original[1]
-
-threshold_spectrum = exp.reconstruct_threshold_to_spectrum(
-    threshold_value=threshold_score,
-    zone_name=zone_name,
-    pca_info_dict=pca_info_dict_original
+threshold_spectrum = exp.plot_threshold_spectrum(
+    lrc_natural_df=lrc_summed_df_pert_natural,
+    row_index=0,
+    spectral_zones_original=spectral_zones_original,
+    pca_info_dict_original=pca_info_dict_original,
+    y_labels=ycalclass,
+    output_path=SCRIPT_DIR / 'threshold_pert_plot.html',
 )
-print(f"\nEspectro de threshold reconstruído para zona '{zone_name}':")
+print(f"\nEspectro de threshold reconstruído (pert):")
 print(f"  - Dimensão: {len(threshold_spectrum)} variáveis espectrais")
-print(f"  - Variância explicada pela PC1: {pca_info_dict_original[zone_name]['variance_explained']:.2%}")
-
-zone_df = spectral_zones_original[zone_name]
-fig = go.Figure()
-x_values = pd.to_numeric(zone_df.columns, errors='coerce')
-
-colors = {'A': 'gold', 'B': 'blue'}
-for idx, row in zone_df.iterrows():
-    class_label = ycalclass.iloc[idx] if idx < len(ycalclass) else 'Unknown'
-    fig.add_trace(go.Scatter(
-        x=x_values, y=row.values, mode='lines',
-        line=dict(color=colors.get(class_label, 'rgba(128,128,128,0.3)'), width=0.5),
-        name=f'Class {class_label}', showlegend=False, hoverinfo='skip'
-    ))
-
-fig.add_trace(go.Scatter(
-    x=x_values, y=threshold_spectrum.values, mode='lines',
-    line=dict(color='red', width=4, dash='dash'),
-    name=f'Threshold Spectrum ({threshold_spectrum.name})'
-))
-
-fig.update_layout(
-    title=f"Zona '{zone_name}' com Threshold Multivariado "
-          f"(Predicado: {lrc_summed_df_pert_natural.iloc[n]['Node_Natural']})",
-    xaxis_title='Energia / Comprimento de Onda',
-    yaxis_title='Intensidade',
-    template='plotly_white', showlegend=True,
-    legend=dict(yanchor="top", y=0.99, xanchor="left", x=0.01)
-)
-fig.write_html(SCRIPT_DIR / 'threshold_pert_plot.html')
+print(f"  - Variância explicada pela PC1: {pca_info_dict_original[lrc_summed_df_pert_natural.iloc[0]['Zone']]['variance_explained']:.2%}")
 
 # ── Permutation importance ───────────────────────────────────────────────────
-n_repeats = 10
-rng = np.random.RandomState(42)
-baseline_pred = pls_model.predict(Xcalclass_prep)
-importance_list = []
-X_arr = Xcalclass_prep.copy()
-
-for col in Xcalclass_prep.columns:
-    diffs = []
-    for _ in range(n_repeats):
-        X_perm = X_arr.copy()
-        X_perm[col] = rng.permutation(X_perm[col].values)
-        perm_pred = pls_model.predict(X_perm)
-        diffs.append(np.mean(np.abs(baseline_pred - perm_pred)))
-    importance_list.append(np.mean(diffs))
-
-permutation_df = pd.DataFrame({
-    'energy': Xcalclass_prep.columns,
-    'Permutation_importance': importance_list
-})
-permutation_df.sort_values(by='Permutation_importance', ascending=False, inplace=True)
-
-energy_to_zone_vip = {}
-for zone_name, start, end in spectral_cuts:
-    for e in permutation_df['energy']:
-        ef = float(e)
-        if start <= ef <= end:
-            energy_to_zone_vip[e] = zone_name
-permutation_df['Zone'] = permutation_df['energy'].map(energy_to_zone_vip)
-
-permutation_unique_df = permutation_df.drop_duplicates(
-    subset=['Zone'], keep='first'
-).reset_index(drop=True)
-permutation_unique_df = permutation_unique_df.sort_values(
-    by='Permutation_importance', ascending=False
+permutation_unique_df, permutation_df = exp.permutation_importance_per_zone(
+    estimator=pls_model,
+    X=Xcalclass_prep,
+    spectral_cuts=spectral_cuts,
+    n_repeats=10,
+    random_state=42,
 )
 print(permutation_unique_df)
 
