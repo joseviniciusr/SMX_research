@@ -421,8 +421,20 @@ def build_feature_importance_table(model_name, debugging_results,
     def pad(lst):
         return lst + [None] * (max_len - len(lst))
 
+    # Canonical column order per model type (model-specific first, then common)
+    COLUMN_ORDER = {
+        'PLS': ['VIP_Score', 'Reg_Coefficient', 'Shap', 'Permutation',
+                 'LRC_perturbation', 'LRC_covariance'],
+        'SVM': ['SVM_pvector', 'Shap', 'Permutation',
+                 'LRC_perturbation', 'LRC_covariance'],
+        'MLP': ['Shap', 'Permutation', 'LRC_perturbation', 'LRC_covariance'],
+    }
+    ordered_cols = [c for c in COLUMN_ORDER.get(model_name, [])
+                    if c in zone_lists]
+
     fi_data = {k: pad(v) for k, v in zone_lists.items()}
-    return pd.DataFrame(fi_data)
+    df = pd.DataFrame(fi_data)
+    return df[ordered_cols] if ordered_cols else df
 
 
 # ── Main experiment orchestrator ─────────────────────────────────────────────
