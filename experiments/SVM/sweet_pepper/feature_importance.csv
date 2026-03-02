@@ -1,0 +1,23 @@
+SVM_pvector;Shap;Permutation;LRC_perturbation;LRC_covariance
+Rb ka + Br kb;K ka;K ka;K ka;K ka
+K ka;Rb ka + Br kb;Rb ka + Br kb;Rh ka Compton;Rb ka + Br kb
+Fe ka;Fe ka;Fe ka;Rb ka + Br kb;background2
+K kb + Ca ka;K kb + Ca ka;K kb + Ca ka;Rh kb Compton;K kb + Ca ka
+background2;Rh ka Compton;Rh ka Compton;Fe ka;Rh ka Compton
+Rh ka Compton;background2;Rh ka Rayleigh;K kb + Ca ka;Rh kb Compton
+Rh kb Rayleigh;Cl;Cl;Rh ka Rayleigh;Zn
+Rh ka Rayleigh;Cu;Rh kb Compton;background2;Cl
+Cu;background3;background2;background3;Rh ka Rayleigh
+Ca kb;S;background3;Cl;Cu
+Rb kb;Sr ka;Rh kb Rayleigh;Br ka;Br ka
+Rh kb Compton;Rb kb;Ca kb;Rb kb;Rh kb Rayleigh
+Cl;Rh kb Compton;Sr ka;Rh kb Rayleigh;
+background3;Rh ka Rayleigh;Br ka;Cu;
+background1;Rh kb Rayleigh;Rb kb;Zn;
+Br ka;Mn;Cu;Sr ka;
+Sr ka;background1;Zn;background1;
+Mn;Fe kb;background1;S;
+Zn;Ca kb;Fe kb;Ca kb;
+Fe kb;Br ka;S;Mn;
+S;Zn;Mn;Fe kb;
+;;;;
