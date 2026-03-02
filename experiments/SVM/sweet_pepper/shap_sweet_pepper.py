@@ -41,6 +41,10 @@ import preprocessings as prepr  # preprocessing methods for XRF data
 Xcalclass_prep, mean_calclass, mean_calclass_poisson  = prepr.poisson(Xcalclass, mc=True)
 Xpredclass_prep = ((Xpredclass/np.sqrt(mean_calclass)) - mean_calclass_poisson)
 
+<<<<<<< Updated upstream
+=======
+# PLS-DA with optimized latent variables
+>>>>>>> Stashed changes
 from modeling import svm_optimized
 
 svm_model = svm_optimized(Xcalclass_prep, ycalclass, Xpredclass_prep, ypredclass, aim='classification', kernel='rbf')
@@ -48,7 +52,11 @@ svm_model = svm_optimized(Xcalclass_prep, ycalclass, Xpredclass_prep, ypredclass
 import shap
 
 model_predict_proba = lambda x: svm_model[3].predict_proba(x)[:, 1] # o 1 é a probabilidade da classe positiva
+<<<<<<< Updated upstream
 explainer = shap.KernelExplainer(model_predict_proba, Xcalclass_prep, njobs=11)  # using a subset of calibration data as background for SHAP
+=======
+explainer = shap.KernelExplainer(model_predict_proba, Xcalclass_prep, njobs=-1)  # using a subset of calibration data as background for SHAP
+>>>>>>> Stashed changes
 shap_exp = explainer(Xcalclass_prep)  # explain a subset of calibration data
 
 shap_values = shap_exp.values
