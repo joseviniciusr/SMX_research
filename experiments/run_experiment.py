@@ -7,6 +7,8 @@ Usage:
 """
 
 import argparse
+import os
+import random
 import warnings
 import sys
 from pathlib import Path
@@ -14,6 +16,15 @@ from pathlib import Path
 import pandas as pd
 import numpy as np
 import kennard_stone as ks
+
+GLOBAL_SEED = 42
+
+
+def set_global_seed(seed=GLOBAL_SEED):
+    """Set all random seeds for full reproducibility."""
+    os.environ['PYTHONHASHSEED'] = str(seed)
+    random.seed(seed)
+    np.random.seed(seed)
 
 # ── Path setup ───────────────────────────────────────────────────────────────
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -50,7 +61,7 @@ MODEL_CONFIG = {
         'train_fn': mlp_optimized,
         'train_kwargs': lambda cfg: {
             'aim': 'classification',
-            **cfg['model_params']['mlp'],
+            **{'random_state': GLOBAL_SEED, **cfg['model_params']['mlp']},
         },
         'y_pred_extractor': lambda result: result[4]['MLP'],
         'model_extractor': lambda result: result[3],
@@ -64,7 +75,7 @@ MODEL_CONFIG = {
         'train_fn': svm_optimized,
         'train_kwargs': lambda cfg: {
             'aim': 'classification',
-            **cfg['model_params']['svm'],
+            **{'random_state': GLOBAL_SEED, **cfg['model_params']['svm']},
         },
         'y_pred_extractor': lambda result: result[4]['SVC'],
         'model_extractor': lambda result: result[3],
@@ -456,6 +467,9 @@ def run_single_experiment(dataset, model_name, method, debugging):
     print(f"\n{'#'*70}")
     print(f"# Experiment: dataset={dataset}, model={model_name}, method={method}")
     print(f"{'#'*70}\n")
+
+    # 0. Set global seed for reproducibility
+    set_global_seed(GLOBAL_SEED)
 
     # 1. Load config
     config = load_dataset_config(dataset)
