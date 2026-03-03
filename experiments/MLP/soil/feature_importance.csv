@@ -1,22 +1,22 @@
 Shap;Permutation;LRC_perturbation;LRC_covariance
 Fe ka;Fe ka;Ca ka;Ca ka
-Ca ka;Ti ka;Fe ka;Fe ka
-Ti ka;Ca ka;Mn;Ti ka
-Mn;Mn;Ti ka;Ca kb
+Ca ka;Ti ka;Mn;Fe ka
+Ti ka;Ca ka;Ti ka;Ti ka
+Mn;Mn;Fe ka;Ca kb
 Fe kb;Fe kb;K;Mn
 K;Si;Ti kb;K
-Si;K;Fe kb;Fe kb
-Ca kb;Ca kb;Ca kb;Si
-Al;Al;sum Fe;Al
-sum Fe;sum Fe;Si;sum Fe
-background2;Ti kb;Al;Ti kb
-Ti kb;P;background3;Fe ka + Ti ka
+Si;K;Si;Fe kb
+Ca kb;Ca kb;Al;Si
+Al;Al;Fe kb;Al
+sum Fe;sum Fe;Ca kb;sum Fe
+background2;Ti kb;sum Fe;Ti kb
+Ti kb;P;Cu;Fe ka + Ti ka
 P;Cr;P;P
-Rh L + Ar;background2;background2;Cr
-Fe ka + Ti ka;Cu;Cr;background2
-Cr;Rh L + Ar;Cu;S
+Rh L + Ar;background2;Cr;Cr
+Fe ka + Ti ka;Cu;S;background2
+Cr;Rh L + Ar;background3;S
 Cu;Fe ka + Ti ka;Rh L + Ar;background1
 background3;background1;Fe ka + Ti ka;Rh L + Ar
-;background3;S;background3
-S;S;background1;Cu
+;background3;background1;background3
+S;S;background2;Cu
 background1;;;
