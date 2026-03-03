@@ -573,7 +573,7 @@ def bagging_predicates(zone_sums_df, y_predicted_numeric, predicates_df,
     
     return bags_dict
 
-def calculate_predicate_metrics(bags_result, metric='mutual_info', threshold=0.1, n_neighbors=10, min_predicates_per_bag=2):
+def calculate_predicate_metrics(bags_result, metric='mutual_info', threshold=0.1, n_neighbors=10):
     """
     Compute association metrics between aggregated spectral zone values 
     and model predictions for each predicate in each bag.
@@ -613,12 +613,6 @@ def calculate_predicate_metrics(bags_result, metric='mutual_info', threshold=0.1
         - Low values (3-5): more sensitive to local noise
         - Medium values (10-20): balance between sensitivity and robustness (recommended)
         - High values (>30): smoother, less sensitive to local variations
-    
-    - **min_predicates_per_bag** : int, optional (default=2)
-        Minimum number of predicates to keep per bag when the absolute threshold
-        filters out all predicates. Acts as an adaptive fallback: if no predicates
-        pass the threshold, the top ``min_predicates_per_bag`` predicates with
-        nonzero metric values are retained. Set to 0 to disable the fallback.
     
     Returns
     -------
@@ -765,17 +759,7 @@ def calculate_predicate_metrics(bags_result, metric='mutual_info', threshold=0.1
         
         # 3. FILTER BY THRESHOLD        
         n_before_filter = len(metrics_df)
-        filtered_df = metrics_df[metrics_df[metric_name] > threshold].reset_index(drop=True)
-        
-        # Adaptive fallback: if threshold removes everything, keep top nonzero predicates
-        if len(filtered_df) == 0 and min_predicates_per_bag > 0:
-            nonzero_df = metrics_df[metrics_df[metric_name] > 0].reset_index(drop=True)
-            if len(nonzero_df) > 0:
-                filtered_df = nonzero_df.head(min_predicates_per_bag).reset_index(drop=True)
-                print(f"  {bag_name}: threshold {threshold} removed all predicates; "
-                      f"keeping top {len(filtered_df)} with nonzero {metric_name}")
-        
-        metrics_df = filtered_df
+        metrics_df = metrics_df[metrics_df[metric_name] > threshold].reset_index(drop=True)
         n_after_filter = len(metrics_df)
         n_filtered = n_before_filter - n_after_filter
         
@@ -1058,7 +1042,7 @@ def get_zone_columns_from_predicate(
     zone_columns = list(Xcal_columns[mask_cols])
     
     return zone_columns
-# unused
+
 def spectral_perturbation_importance(model, X, y_pred_original, spectral_cuts, 
                                       perturbation_value=0, metric='mean_abs_diff'):
     """
@@ -1154,6 +1138,8 @@ def calculate_predicate_perturbation(
     perturbation_mode: str = 'constant',
     stats_source: str = 'full',
     metric: str = 'mean_abs_diff',
+    normalize_by_zone_size: bool = False,
+    zone_size_exponent: float = 1.0,
     verbose: bool = False,
     save_detailed_results: bool = True
 ) -> Dict:
@@ -1242,6 +1228,19 @@ def calculate_predicate_perturbation(
         - 'decision_function_shift': Mean of the absolute difference in decision function
           values. Useful for SVM and linear models. Does not require y_calclass.
           Uses: estimator.decision_function() - REQUIRES a model with decision_function (e.g., SVC, LinearSVC)
+        
+    normalize_by_zone_size : bool, default=False
+        If True, divides the raw perturbation importance by the number of
+        spectral variables in the zone raised to ``zone_size_exponent``.
+        This compensates for the bias towards larger spectral zones.
+        Formula: importance_norm = importance_raw / (n_zone_features ** zone_size_exponent)
+        
+    zone_size_exponent : float, default=1.0
+        Exponent applied to the zone size for normalization.
+        Only used when ``normalize_by_zone_size=True``.
+        - 1.0: full normalization (importance per variable)
+        - 0.5: square-root normalization (moderate correction)
+        - 0.0: no normalization (equivalent to normalize_by_zone_size=False)
         
     verbose : bool, default=False
         If True, prints progress details
@@ -1410,6 +1409,10 @@ def calculate_predicate_perturbation(
     if stats_source not in valid_sources:
         raise ValueError(f"stats_source must be one of {valid_sources}. Received: {stats_source}")
     
+    # Validate zone_size_exponent
+    if zone_size_exponent < 0:
+        raise ValueError(f"zone_size_exponent must be >= 0. Received: {zone_size_exponent}")
+    
     # Initial log if verbose
     if verbose:
         print("=" * 70)
@@ -1425,6 +1428,10 @@ def calculate_predicate_perturbation(
         print(f"Total folds: {total_folds}")
         if aim == 'classification' and y_calclass is not None:
             print(f"Classes in y_calclass: {y_calclass.unique().tolist()}")
+        if normalize_by_zone_size:
+            print(f"Zone-size normalization: ENABLED (exponent={zone_size_exponent})")
+        else:
+            print(f"Zone-size normalization: DISABLED")
         print()
     
     # MAIN LOOP: PROCESS EACH FOLD
@@ -1787,14 +1794,34 @@ def calculate_predicate_perturbation(
                     y_pred_original = estimator.predict(X_eval)
                     y_pred_perturbed = estimator.predict(X_perturbed)
             
-            # 8. STORE RESULTS
+            # 8. OPTIONAL ZONE-SIZE NORMALISATION
+            
+            n_zone_features = len(zone_cols)
+            
+            if normalize_by_zone_size and n_zone_features > 0:
+                normalization_factor = n_zone_features ** zone_size_exponent
+                importance_for_ranking = importance_for_ranking / normalization_factor
+                
+                if verbose:
+                    print(f"    Normalized importance: {importance_for_ranking:.6f} "
+                          f"(/ {n_zone_features}^{zone_size_exponent} = "
+                          f"/ {normalization_factor:.2f})")
+            
+            # 9. STORE RESULTS
             
             # Store importance for ranking
             fold_metrics[pred_rule] = importance_for_ranking
             
             # Save complete details
+            # importance_raw stores the value before zone-size normalization
+            if metric in ['mean_diff', 'mean_relative_dev']:
+                importance_raw_value = np.abs(importance)
+            else:
+                importance_raw_value = importance
             fold_detailed[pred_rule] = {
                 'importance': importance,
+                'importance_raw': float(importance_raw_value),
+                'importance_normalized': importance_for_ranking,
                 'importance_abs': np.abs(importance) if isinstance(importance, (int, float)) else importance,
                 'n_samples': n_samples,
                 'zone_columns': zone_cols,
@@ -1805,7 +1832,9 @@ def calculate_predicate_perturbation(
                 'perturbation_mode': perturbation_mode,
                 'stats_source': stats_source if perturbation_mode != 'constant' else None,
                 'aim': aim,
-                'metric': metric
+                'metric': metric,
+                'normalize_by_zone_size': normalize_by_zone_size,
+                'zone_size_exponent': zone_size_exponent if normalize_by_zone_size else None
             }
             
             # Log computed importance
@@ -1891,7 +1920,6 @@ def calculate_predicate_perturbation(
     
     # Return dictionary with results
     return metrics_results_dict
-
 
 def map_thresholds_to_natural(
     lrc_df,                    # DataFrame with Zone and Threshold as columns (preprocessed space)
@@ -2119,7 +2147,6 @@ def extract_zone_from_predicate(predicate_rule):
         return predicate_rule.split('>')[0].strip()
     else:
         raise ValueError(f"Unrecognized operator in: {predicate_rule}")
-
 
 def build_predicate_graph(bags_result, predicate_ranking_dict, 
                             metric_column='Cov',
