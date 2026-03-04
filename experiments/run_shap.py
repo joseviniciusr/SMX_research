@@ -7,11 +7,13 @@ that is consumed by debugging.shap_per_zone().
 Usage:
     python experiments/run_shap.py --dataset tomato --model mlp
     python experiments/run_shap.py --dataset all --model all
+    python experiments/run_shap.py --dataset all --model all --parallel 3
 """
 
 import argparse
 import os
 import random
+import subprocess
 import sys
 from pathlib import Path
 
@@ -103,6 +105,18 @@ def run_shap(dataset, model_name):
 
 # ── CLI ──────────────────────────────────────────────────────────────────────
 
+def _run_single_wrapper(args_tuple):
+    """Wrapper for subprocess-based parallel execution."""
+    dataset, model_name = args_tuple
+    try:
+        run_shap(dataset, model_name)
+        return (dataset, model_name, None)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return (dataset, model_name, str(e))
+
+
 def main():
     parser = argparse.ArgumentParser(description='SMX SHAP Value Generator')
     parser.add_argument('--dataset', required=True,
@@ -110,19 +124,64 @@ def main():
     parser.add_argument('--model', required=True,
                         choices=['pls', 'mlp', 'svm', 'all'],
                         help='Model type or "all"')
+    parser.add_argument('--parallel', type=int, default=1, metavar='N',
+                        help='Number of parallel SHAP jobs to run (default: 1, sequential)')
     args = parser.parse_args()
 
     datasets = list_available_datasets() if args.dataset == 'all' else [args.dataset]
     models = ['pls', 'mlp', 'svm'] if args.model == 'all' else [args.model]
 
-    for ds in datasets:
-        for mdl in models:
+    jobs = [(ds, mdl) for ds in datasets for mdl in models]
+
+    if args.parallel <= 1:
+        # Sequential execution
+        for ds, mdl in jobs:
             try:
                 run_shap(ds, mdl)
             except Exception as e:
                 print(f"\nERROR running SHAP for {ds}/{mdl}: {e}")
                 import traceback
                 traceback.print_exc()
+    else:
+        # Spawn child processes so each job gets its own GIL and memory space
+        script = str(Path(__file__).resolve())
+        running = {}  # pid -> (process, dataset, model)
+        pending = list(jobs)
+
+        def _poll_and_report():
+            """Check running processes, report any that have finished."""
+            finished = []
+            for pid, (proc, ds, mdl) in running.items():
+                ret = proc.poll()
+                if ret is not None:
+                    finished.append(pid)
+                    status = 'OK' if ret == 0 else f'FAILED (exit {ret})'
+                    print(f"\n[parallel] {ds}/{mdl} finished: {status}")
+                    if ret != 0:
+                        print(proc.stderr.read())
+            for pid in finished:
+                running.pop(pid)
+
+        while pending or running:
+            # Fill up to --parallel slots
+            while pending and len(running) < args.parallel:
+                ds, mdl = pending.pop(0)
+                print(f"[parallel] Launching {ds}/{mdl}...")
+                proc = subprocess.Popen(
+                    [sys.executable, script, '--dataset', ds, '--model', mdl],
+                    stdout=sys.stdout,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                )
+                running[proc.pid] = (proc, ds, mdl)
+
+            # Wait a bit before polling again
+            if running:
+                import time
+                time.sleep(2)
+                _poll_and_report()
+
+        print("\n[parallel] All SHAP jobs completed.")
 
 
 if __name__ == '__main__':
