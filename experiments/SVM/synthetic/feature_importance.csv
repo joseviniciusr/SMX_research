@@ -5,10 +5,10 @@ F6;F2;F6;F6;F6
 F3;background1;F3;F3;F4
 F4;background2;F4;F2;F3
 F2;F3;F2;F4;F2
-background2;F4;background1;background1;background5
-background1;background3;background2;background6;background4
-background4;background4;background5;background5;
+background2;F4;background1;background2;background5
+background1;background3;background2;background5;background4
+background4;background4;background5;background1;
 background6;F5;background4;background4;
-background5;F6;background6;background3;
-background3;background6;background3;background2;
+background5;F6;background6;background6;
+background3;background6;background3;background3;
 ;;;;

@@ -1,24 +1,24 @@
 Shap;Permutation;LRC_perturbation;LRC_covariance
 Al;K;K;Fe ka
 Si;Fe ka;Ca ka;K
-P;Ca ka;Fe ka;Ca ka
-S;Si;Si;Si
+P;Ca ka;Si;Ca ka
+S;Si;S;Si
 Rh L + Ar;Ca kb;Mn;Ti ka
-K;Ti ka;Ca kb;Fe kb
-Ca ka;P;S;Ca kb
-Ca kb;Mn;background3;Rh L + Ar
-Ti ka;Rh L + Ar;Rh L + Ar;background3
+K;Ti ka;Ti ka;Fe kb
+Ca ka;P;Fe ka;Ca kb
+Ca kb;Mn;Ca kb;Rh L + Ar
+Ti ka;Rh L + Ar;P;background3
 Ti kb;Fe kb;Fe kb;Compton scattering
-background1;S;Ti ka;Al
-Mn;Ni;Ti kb;Rayleight scattering
-Fe ka;Al;P;sum Fe
-Fe kb;sum Fe;background2;P
-Ni;background3;sum Fe;Ti kb
-Cu;background2;Cu;background2
-Zn;Ti kb;Al;Mn
-background2;Cu;Compton scattering;Cu
-sum Fe;Compton scattering;Ni;S
-background3;Zn;background1;Ni
-Compton scattering;Rayleight scattering;Rayleight scattering;Zn
-Rayleight scattering;background1;Zn;background1
+background1;S;Al;Al
+Mn;Ni;Rh L + Ar;Rayleight scattering
+Fe ka;Al;Ti kb;sum Fe
+Fe kb;sum Fe;sum Fe;P
+Ni;background3;Cu;Ti kb
+Cu;background2;Ni;background2
+Zn;Ti kb;background1;Mn
+background2;Cu;Rayleight scattering;Cu
+sum Fe;Compton scattering;background3;S
+background3;Zn;Zn;Ni
+Compton scattering;Rayleight scattering;Compton scattering;Zn
+Rayleight scattering;background1;background2;background1
 ;;;

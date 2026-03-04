@@ -3,22 +3,22 @@ Fe ka;background3;Fe ka;Si;Fe ka
 Ca ka;Al;K;Ca ka;Ca ka
 Si;P;Ca ka;Fe ka;Si
 K;S;Si;K;K
-Ca kb;Rh L + Ar;Rh L + Ar;Rh L + Ar;Ti ka
-Ti ka;Si;Ca kb;Ca kb;Fe kb
-Fe kb;K;Ti ka;Ti ka;Ca kb
+Ca kb;Rh L + Ar;Rh L + Ar;Ti ka;Ti ka
+Ti ka;Si;Ca kb;Rh L + Ar;Fe kb
+Fe kb;K;Ti ka;Ca kb;Ca kb
 Rh L + Ar;Ca ka;Fe kb;Fe kb;Rh L + Ar
-P;Ti ka;P;background2;background3
-S;Ca kb;Mn;background3;Compton scattering
-sum Fe;background1;S;P;sum Fe
-Al;Mn;Al;Mn;Rayleight scattering
-Ti kb;Fe ka;sum Fe;Compton scattering;Al
-Ni;Ti kb;Ni;S;background2
-Mn;Fe kb;Ti kb;sum Fe;Ti kb
-Compton scattering;Ni;background2;Al;P
-background2;Zn;Compton scattering;Ni;Mn
-Rayleight scattering;Cu;background3;Ti kb;Zn
-Zn;background2;Zn;Rayleight scattering;Cu
-background3;sum Fe;Rayleight scattering;Zn;S
+P;Ti ka;P;P;background3
+S;Ca kb;Mn;Mn;Compton scattering
+sum Fe;background1;S;S;sum Fe
+Al;Mn;Al;Al;Rayleight scattering
+Ti kb;Fe ka;sum Fe;sum Fe;Al
+Ni;Ti kb;Ni;Zn;background2
+Mn;Fe kb;Ti kb;Ti kb;Ti kb
+Compton scattering;Ni;background2;Ni;P
+background2;Zn;Compton scattering;Rayleight scattering;Mn
+Rayleight scattering;Cu;background3;Compton scattering;Zn
+Zn;background2;Zn;background3;Cu
+background3;sum Fe;Rayleight scattering;background2;S
 background1;Compton scattering;Cu;Cu;Ni
 Cu;Rayleight scattering;background1;background1;background1
 ;;;;
