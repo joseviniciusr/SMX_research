@@ -90,19 +90,11 @@ def run_shap(dataset, model_name, new_only=False):
     mc = MODEL_CONFIG[model_name]
     model = mc['model_extractor'](result)
 
-    # 7. Compute SHAP values (parallelised across samples via joblib)
+    # 7. Compute SHAP values
     print("Computing SHAP values (KernelExplainer)...")
     predict_fn = SHAP_PREDICT_FN[model_name](model)
     explainer = shap.KernelExplainer(predict_fn, Xcalclass_prep)
-
-    n_jobs = min(os.cpu_count() or 1, Xcalclass_prep.shape[0])
-    chunks = np.array_split(Xcalclass_prep, n_jobs)
-
-    from joblib import Parallel, delayed
-    results = Parallel(n_jobs=n_jobs, prefer="threads")(
-        delayed(explainer.shap_values)(chunk) for chunk in chunks
-    )
-    shap_values = np.concatenate(results, axis=0)
+    shap_values = explainer.shap_values(Xcalclass_prep)
 
     shap_global_importance = pd.DataFrame({
         'energy': Xcalclass_prep.columns,
