@@ -1,6 +1,6 @@
 {
   "name": "synthetic",
-  "csv_file": null,
+  "csv_file": "synthetic.csv",
   "is_synthetic": true,
   "separator": ";",
   "class_column": "Class",
