@@ -6,12 +6,12 @@ Cu ka;Ca ka;Fe ka;Cu ka;Ti kb;Ti ka
 Fe kb;Cu ka;Ti kb;Fe ka;Ca kb;Ca kb
 Ca kb;Ca kb;Ag ka scattering;Ca kb;Fe ka;Cu ka
 Ti kb;background3;Ca kb;Ag ka scattering;Ag ka scattering;Ti kb
-Ag ka scattering;Cu kb;background3;Fe kb;Cu kb;Cu kb
+Ag ka scattering;Cu kb;Fe kb;Fe kb;Cu kb;Cu kb
 Cu kb;background1;Ar ka + Ag L;Cu kb;Fe kb;Ag ka scattering
-background3;Ar ka + Ag L;Fe kb;background3;Zn ka;background3
-Zn ka;Zn ka;background1;Zn ka;background1;Zn ka
-background1;Fe ka;background2;background1;Ar ka + Ag L;background1
-Ar ka + Ag L;;Zn ka;Ar ka + Ag L;background3;Ar ka + Ag L
-;Zn kb;;;background2;Zn kb
-Zn kb;Fe kb;Cu kb;Zn kb;Zn kb;background2
-background2;background2;Zn kb;background2;;
+background3;Ar ka + Ag L;background1;background3;Zn ka;background3
+Zn ka;Zn ka;background3;Zn ka;background1;Zn ka
+background1;Fe ka;;background1;Ar ka + Ag L;background1
+Ar ka + Ag L;;background2;Ar ka + Ag L;background3;Ar ka + Ag L
+;Zn kb;Zn ka;;background2;Zn kb
+Zn kb;Fe kb;Zn kb;Zn kb;Zn kb;background2
+background2;background2;Cu kb;background2;;

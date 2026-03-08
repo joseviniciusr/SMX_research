@@ -2,11 +2,11 @@ VIP_Score;Reg_Coefficient;Shap;Permutation;LRC_perturbation;LRC_covariance
 Ag La;Ag ka;Ag La;Ag ka;Ag La;Ag La
 Ag Lb;Zn;Ag ka;Ag La;Ag Lb;Ag Lb
 Ag ka;Ag La;Ag Lb;Ag Lb;Ag ka;Ag ka
-Zn;Fe;Fe;Zn;Ag compton;Bremsstrahlung
-Ag compton;Ag Lb;Zn;Fe;Zn;Ag compton
+Zn;Fe;Zn;Zn;Ag compton;Bremsstrahlung
+Ag compton;Ag Lb;Fe;Fe;Zn;Ag compton
 Fe;Bremsstrahlung;Ag compton;Ag compton;Fe;Fe
 Bremsstrahlung;Ag compton;Bremsstrahlung;Bremsstrahlung;Ca;Ca
-Ca;Ca;Ca;Ca;Bremsstrahlung;Cu
-background;background;Cu;Cu;Cu;Zn
-Cu;Cu;background;background;background;background
+Ca;Ca;Cu;Ca;Bremsstrahlung;Cu
+background;background;background;Cu;Cu;Zn
+Cu;Cu;Ca;background;background;background
 ;;;;;

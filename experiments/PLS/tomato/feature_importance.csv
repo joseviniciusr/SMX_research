@@ -4,16 +4,16 @@ K kb + Ca ka;K kb + Ca ka;K ka;K ka;K kb + Ca ka;Rh ka Compton
 K ka;Cl;Cl;K kb + Ca ka;Rb ka + Br kb;K ka
 Rh ka Compton;background1;K kb + Ca ka;Cl;Cl;Cu
 Cl;background3;Rh ka Compton;Rh ka Compton;Rh ka Rayleigh;Rh ka Rayleigh
-background1;K ka;background3;background3;Rh ka Compton;background3
+background1;K ka;Rh kb Compton;background3;Rh ka Compton;background3
 Cu;Zn;Rh ka Rayleigh;Rh kb Compton;Rh kb Compton;Rh kb Compton
-background3;Cu;Rh kb Compton;Rh ka Rayleigh;Zn;Br ka
-background2;Rh ka Compton;Rh kb Rayleigh;background1;Fe;Cl
-Zn;Rh kb Rayleigh;Br ka;Br ka;background3;Rh kb Rayleigh
+background3;Cu;Rh kb Rayleigh;Rh ka Rayleigh;Zn;Br ka
+background2;Rh ka Compton;background3;background1;Fe;Cl
+Zn;Rh kb Rayleigh;Zn;Br ka;background3;Rh kb Rayleigh
 Br ka;Rh kb Compton;background1;Fe;Cu;K kb + Ca ka
-Fe;background2;background2;Cu;S;background2
-Rh kb Rayleigh;Br ka;S;Zn;Rh kb Rayleigh;Fe
-Rh kb Compton;Fe;Fe;Rh kb Rayleigh;Br ka;
-Rh ka Rayleigh;Rh ka Rayleigh;Cu;background2;background1;
-Mn;Mn;Mn;Mn;Mn;
-S;S;Zn;S;background2;
+Fe;background2;Fe;Cu;S;background2
+Rh kb Rayleigh;Br ka;Cu;Zn;Rh kb Rayleigh;Fe
+Rh kb Compton;Fe;S;Rh kb Rayleigh;Br ka;
+Rh ka Rayleigh;Rh ka Rayleigh;Br ka;background2;background1;
+Mn;Mn;background2;Mn;Mn;
+S;S;Mn;S;background2;
 ;;;;;
