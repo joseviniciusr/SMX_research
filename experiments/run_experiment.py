@@ -52,7 +52,8 @@ MODEL_CONFIG = {
         'train_fn': mlp_optimized,
         'train_kwargs': lambda cfg: {
             'aim': 'classification',
-            **{'random_state': cfg['seed'], **cfg['model_params']['mlp']},
+            **cfg['model_params']['mlp'],
+            'random_state': cfg['seed'],
         },
         'y_pred_extractor': lambda result: result[4]['MLP'],
         'model_extractor': lambda result: result[3],
@@ -66,7 +67,8 @@ MODEL_CONFIG = {
         'train_fn': svm_optimized,
         'train_kwargs': lambda cfg: {
             'aim': 'classification',
-            **{'random_state': cfg['seed'], **cfg['model_params']['svm']},
+            **cfg['model_params']['svm'],
+            'random_state': cfg['seed'],
         },
         'y_pred_extractor': lambda result: result[4]['SVC'],
         'model_extractor': lambda result: result[3],
