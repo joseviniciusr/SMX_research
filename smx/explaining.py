@@ -1804,8 +1804,7 @@ def calculate_predicate_perturbation(
                 
                 if verbose:
                     print(f"    Normalized importance: {importance_for_ranking:.6f} "
-                          f"(/ {n_zone_features}^{zone_size_exponent} = "
-                          f"/ {normalization_factor:.2f})")
+                          f"/ {n_zone_features}")
             
             # 9. STORE RESULTS
             
