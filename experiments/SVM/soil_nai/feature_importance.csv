@@ -1,0 +1,11 @@
+SVM_pvector;Shap;Permutation;LRC_perturbation
+Pb-212;Pb-212;Pb-212;Pb-212
+Tl-208;Tl-208;Tl-208;Tl-208
+background 2;background 1;background 1;background 1
+background 1;background 2;background 2;Ac-228 + Tl-208
+Ac-228;K-40;Ac-228 + Tl-208;background 2
+Bi-214;Bi-214;Ac-228;Ac-228
+Ac-228 + Tl-208;Ac-228;background 3;background 3
+background 3;Ac-228 + Tl-208;Bi-214;Bi-214
+K-40;background 3;K-40;K-40
+;;;
