@@ -1,0 +1,5 @@
+LVs;Accuracy Cal;Sensitivity Cal;Specificity Cal;CM Cal;Accuracy CV;Sensitivity CV;Specificity CV;CM CV;Accuracy Pred;Sensitivity Pred;Specificity Pred;CM Pred;X Cum Exp Var;Y Cum Exp Var;X Ind Exp Var;Y Ind Exp Var
+1;1.0;1.0;1.0;"[[53  0]
+ [ 0 55]]";1.0;1.0;1.0;"[[53  0]
+ [ 0 55]]";1.0;1.0;1.0;"[[24  0]
+ [ 0 24]]";98.8785080358029;46.92113279731242;98.8785080358029;46.92113279731242
