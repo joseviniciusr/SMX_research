@@ -1,0 +1,44 @@
+{
+  "name": "soil_types_nai",
+  "csv_file": "soil_types_nai.csv",
+  "separator": ";",
+  "class_column": "Class",
+  "spectral_range": ["57", "430"],
+
+  "preprocessing": [{"method": "savgol", "window_length": 15, "polyorder": 2, "deriv": 0}, "mc"],
+  "preprocessing_mc": false,
+
+  "training_aim": "classification",
+  "random_seeds": [0, 1, 2, 3],
+  "seed": 42,
+  "test_size": 0.30,
+
+  "spectral_cuts": [
+    ["Pb-212", 57, 70],
+    ["Pb-214", 70, 115],
+    ["Ac-228 + Tl-208", 115, 137],
+    ["Tl-208", 137, 170],
+    ["background 1", 170, 207],
+    ["Ac-228", 207, 255],
+    ["Bi-214", 255, 290],
+    ["background 2", 290, 390],
+    ["K-40", 390, 430]
+  ],
+
+  "compatible_models": ["pls", "mlp", "svm"],
+  "model_params": {
+    "pls": {
+      "LVmax": 1,
+      "cv": 10
+    },
+    "mlp": {
+      "hidden_layer_sizes": [64, 32],
+      "activation": "tanh",
+      "learning_rate": "adaptive",
+      "max_iter": 10
+    },
+    "svm": {
+      "kernel": "rbf"
+    }
+  }
+}
