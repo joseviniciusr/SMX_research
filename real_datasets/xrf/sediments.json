@@ -1,0 +1,54 @@
+{
+  "name": "sediments",
+  "csv_file": "sediments.csv",
+  "separator": ";",
+  "class_column": "Class",
+  "spectral_range": ["1.4", "13.05"],
+
+  "preprocessing": "poisson",
+  "preprocessing_mc": true,
+
+  "training_aim": "classification",
+  "random_seeds": [0, 1, 2, 3],
+  "seed": 42,
+  "test_size": 0.30,
+
+  "spectral_cuts": [
+    ["Al", 1.40, 1.61],
+    ["Si", 1.61, 1.93],
+    ["P", 1.86, 2.16],
+    ["S", 2.16, 2.52],
+    ["Rh L + Ar", 2.52, 3.15],
+    ["K", 3.15, 3.51],
+    ["Ca ka", 3.51, 3.88],
+    ["Ca kb", 3.88, 4.18],
+    ["Ti ka", 4.18, 4.77],
+    ["Ti kb", 4.77, 5.15],
+    ["Backgroun 1", 5.15, 5.74],
+    ["Mn", 5.74, 6.11],
+    ["Fe ka", 6.11, 6.76],
+    ["Fe kb", 6.76, 7.36],
+    ["Backgroun 2", 7.36, 7.95],
+    ["Cu", 7.95, 8.25],
+    ["Zn", 8.25, 8.92],
+    ["background 3", 8.92, 12.71],
+    ["sum Fe", 12.71, 13.05]
+  ],
+
+  "compatible_models": ["pls", "mlp", "svm"],
+  "model_params": {
+    "pls": {
+      "LVmax": 3,
+      "cv": 10
+    },
+    "mlp": {
+      "hidden_layer_sizes": [64, 32],
+      "activation": "tanh",
+      "learning_rate": "adaptive",
+      "max_iter": 10
+    },
+    "svm": {
+      "kernel": "rbf"
+    }
+  }
+}
