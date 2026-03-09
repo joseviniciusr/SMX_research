@@ -1,0 +1,3 @@
+[submodule "SMX"]
+	path = SMX
+	url = https://github.com/joseviniciusr/SMX
