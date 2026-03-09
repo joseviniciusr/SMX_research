@@ -48,13 +48,13 @@ smx/
 ├── __init__.py                  # Public API surface
 ├── _version.py                  # Single-source version string
 │
-├── preprocessing/
+*├── preprocessing/
 │   ├── __init__.py              # re-export public names
 │   ├── scalers.py               # PoissonScaler, ParetoScaler, AutoScaler, MeanCenterer
 │   ├── spectral.py              # SavGolFilter, MSCCorrector
 │   └── pipeline.py              # PreprocessingPipeline (chains steps, fit/transform)
 │
-├── models/
+*├── models/
 │   ├── __init__.py
 │   ├── base.py                  # BaseSpectralModel (ABC) – unified return type
 │   ├── pls.py                   # PLSModel (wraps PLSRegression for reg + DA)
@@ -78,10 +78,10 @@ smx/
 │   ├── centrality.py            # LRC computation + seed aggregation
 │   └── interpretation.py        # map_thresholds_to_natural, reconstruct_threshold_to_spectrum
 │
-├── synthetic.py                 # SyntheticSpectraGenerator (class)
-├── config.py                    # DatasetConfig dataclass + load/list helpers
+*├── synthetic.py                 # SyntheticSpectraGenerator (class)
+*├── config.py                    # DatasetConfig dataclass + load/list helpers
 │
-├── _contrib/                    # Maintainer-only / research utilities
+*├── _contrib/                    # Maintainer-only / research utilities
 │   ├── __init__.py
 │   ├── importance.py            # VIP-per-zone, reg-coef-per-zone, SVM-pvector-per-zone
 │   ├── shap_utils.py            # SHAP zone mapping
