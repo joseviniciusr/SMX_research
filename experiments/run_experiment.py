@@ -436,13 +436,32 @@ def save_visualization_data(lrc_natural_df, spectral_zones_original,
     # 1. LRC table
     lrc_natural_df.to_csv(viz_dir / 'lrc_natural.csv', index=False, sep=';')
 
-    # 2. Spectral data per zone (with class labels)
+    # 2. Spectral data per zone (with class labels + threshold rows)
     zones_in_lrc = lrc_natural_df['Zone'].dropna().unique().tolist()
     for zone_name in zones_in_lrc:
         if zone_name not in spectral_zones_original:
             continue
         zone_df = spectral_zones_original[zone_name].copy()
         zone_df.insert(0, 'Class', ycalclass.values)
+
+        # Append one Multivariate_threshold row per predicate for this zone
+        zone_rows = lrc_natural_df[lrc_natural_df['Zone'] == zone_name]
+        if zone_name in pca_info_dict_original:
+            for _, lrc_row in zone_rows.iterrows():
+                thresh_val = float(lrc_row['Threshold_Natural'])
+                node_natural = lrc_row.get('Node_Natural', lrc_row.get('Node', ''))
+                thresh_spectrum = exp.reconstruct_threshold_to_spectrum(
+                    threshold_value=thresh_val,
+                    zone_name=zone_name,
+                    pca_info_dict=pca_info_dict_original,
+                )
+                thresh_row = {'Class': f'Multivariate_threshold|{node_natural}'}
+                thresh_row.update({str(c): v for c, v in
+                                   zip(thresh_spectrum.index, thresh_spectrum.values)})
+                zone_df = pd.concat(
+                    [zone_df, pd.DataFrame([thresh_row])], ignore_index=True
+                )
+
         safe_name = zone_name.replace(' ', '_').replace('/', '_').replace('+', 'plus')
         zone_df.to_csv(zones_dir / f'zone_{safe_name}.csv', index=False, sep=';')
 
@@ -536,6 +555,105 @@ def build_and_export_figure(lrc_natural_df, spectral_zones_original,
         out_path = fig_dir / f'threshold_{safe_name}_rank{n}.html'
         fig.write_html(str(out_path))
         print(f"  Figure saved: {out_path}")
+
+
+def load_visualization_data(output_dir, prefix):
+    """Load visualization data previously saved by save_visualization_data.
+
+    Returns
+    -------
+    lrc_natural_df : pd.DataFrame
+    spectral_zones : dict[str, pd.DataFrame]   spectral data only (no Class column,
+                                                no threshold rows)
+    pca_info_dict  : dict                       with numpy arrays restored
+    ycalclass      : pd.Series                  class labels aligned to zone rows
+    """
+    import json
+
+    viz_dir = output_dir / f'viz_{prefix}'
+    if not viz_dir.exists():
+        raise FileNotFoundError(
+            f"Visualization data directory not found: {viz_dir}\n"
+            "Run without --visualization-only first to generate the data."
+        )
+
+    # 1. LRC table
+    lrc_natural_df = pd.read_csv(viz_dir / 'lrc_natural.csv', sep=';')
+
+    # 2. PCA info (restore numpy arrays)
+    with open(viz_dir / 'pca_info.json') as fh:
+        pca_raw = json.load(fh)
+    pca_info_dict = {
+        zone_name: {
+            'mean': np.array(info['mean']),
+            'loadings': np.array(info['loadings']),
+            'variance_explained': info['variance_explained'],
+            'columns': info['columns'],
+        }
+        for zone_name, info in pca_raw.items()
+    }
+
+    # 3. Zone CSVs → spectral_zones + ycalclass
+    zones_dir = viz_dir / 'zones'
+    zones_in_lrc = lrc_natural_df['Zone'].dropna().unique().tolist()
+    safe_to_zone = {
+        z.replace(' ', '_').replace('/', '_').replace('+', 'plus'): z
+        for z in zones_in_lrc
+    }
+
+    spectral_zones = {}
+    ycalclass = None
+    for csv_path in sorted(zones_dir.glob('zone_*.csv')):
+        safe_name = csv_path.stem[len('zone_'):]
+        zone_name = safe_to_zone.get(safe_name)
+        if zone_name is None:
+            continue
+        df = pd.read_csv(csv_path, sep=';')
+        # Filter out threshold rows, keep only real samples
+        mask_threshold = df['Class'].astype(str).str.startswith('Multivariate_threshold')
+        samples_df = df[~mask_threshold].reset_index(drop=True)
+        if ycalclass is None:
+            ycalclass = samples_df['Class'].reset_index(drop=True)
+        spectral_zones[zone_name] = samples_df.drop(columns=['Class'])
+
+    if ycalclass is None:
+        raise RuntimeError(
+            f"No zone CSV files found under {zones_dir} for prefix '{prefix}'."
+        )
+
+    print(f"  Loaded visualization data from {viz_dir} "
+          f"({len(spectral_zones)} zones, {len(lrc_natural_df)} LRC rows)")
+    return lrc_natural_df, spectral_zones, pca_info_dict, ycalclass
+
+
+def run_visualization_only(dataset, model_name, method):
+    """Load pre-computed visualization data from disk and export figures.
+
+    No SMX computation is performed; all inputs come from the ``viz_{prefix}/``
+    directories previously written by save_visualization_data.
+    """
+    print(f"\n{'#'*70}")
+    print(f"# Visualization-only: dataset={dataset}, model={model_name}, method={method}")
+    print(f"{'#'*70}\n")
+
+    output_dir = SCRIPT_DIR / model_name.upper() / dataset
+
+    prefixes = []
+    if method in ('covariance', 'all'):
+        prefixes.append('cov')
+    if method in ('perturbation', 'all'):
+        prefixes.append('pert')
+
+    for prefix in prefixes:
+        print(f"\n--- Loading and rendering figures ({prefix}) ---")
+        lrc_natural_df, spectral_zones, pca_info_dict, ycalclass = \
+            load_visualization_data(output_dir, prefix)
+        build_and_export_figure(
+            lrc_natural_df, spectral_zones, pca_info_dict,
+            ycalclass, output_dir, prefix=prefix,
+        )
+
+    print(f"\nDone – figures saved under {output_dir}")
 
 
 # ── Debugging helpers ────────────────────────────────────────────────────────
@@ -802,6 +920,9 @@ def main():
                         help='Enable non-core extras (permutation, model importance, SHAP, RBO)')
     parser.add_argument('--visualization', action='store_true',
                         help='Export threshold-spectrum HTML figures (one per LRC row)')
+    parser.add_argument('--visualization-only', action='store_true',
+                        help='Load pre-computed viz data from file and export figures; '
+                             'skips all SMX computation')
     args = parser.parse_args()
 
     # Expand 'all'
@@ -811,8 +932,11 @@ def main():
     for ds in datasets:
         for mdl in models:
             try:
-                run_single_experiment(ds, mdl, args.method, args.debugging,
-                                      visualization=args.visualization)
+                if args.visualization_only:
+                    run_visualization_only(ds, mdl, args.method)
+                else:
+                    run_single_experiment(ds, mdl, args.method, args.debugging,
+                                          visualization=args.visualization)
             except Exception as e:
                 print(f"\nERROR running {ds}/{mdl}: {e}")
                 import traceback
