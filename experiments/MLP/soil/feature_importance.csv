@@ -8,15 +8,15 @@ K;Si;K;Si
 Si;Ti kb;Ti kb;K
 Ca kb;P;Fe kb;Fe kb
 Al;Ca kb;P;Al
-sum Fe;K;Al;Ti kb
-background2;sum Fe;Ca kb;sum Fe
-Ti kb;Al;sum Fe;Cr
-P;Rh L + Ar;Cu;P
-Rh L + Ar;Cr;Cr;background1
-Fe ka + Ti ka;Cu;background3;S
-Cr;background2;S;background2
-Cu;S;Fe ka + Ti ka;Rh L + Ar
-background3;background3;Rh L + Ar;background3
+Ti kb;K;Al;Ti kb
+Cr;sum Fe;Ca kb;sum Fe
+background2;Al;sum Fe;Cr
+sum Fe;Rh L + Ar;Cu;P
+P;Cr;Cr;background1
+background3;Cu;background3;S
+Fe ka + Ti ka;background2;S;background2
+S;S;Fe ka + Ti ka;Rh L + Ar
+Rh L + Ar;background3;Rh L + Ar;background3
 ;Fe ka + Ti ka;background1;Cu
-S;background1;background2;
-background1;;;
+background1;background1;background2;
+Cu;;;

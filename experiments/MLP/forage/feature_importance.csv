@@ -6,19 +6,19 @@ Si;Si;S;Si
 Ca kb;Ca kb;Mn;Ti ka
 Ti ka;Ti ka;Ti ka;Fe kb
 Rh L + Ar;P;Fe ka;Ca kb
-background3;Mn;Ca kb;Rh L + Ar
-Mn;Rh L + Ar;P;background3
-background2;Fe kb;Fe kb;Compton scattering
-P;S;Al;Al
-Compton scattering;Ni;Rh L + Ar;Rayleight scattering
-sum Fe;Al;Ti kb;sum Fe
+S;Mn;Ca kb;Rh L + Ar
+P;Rh L + Ar;P;background3
+background3;Fe kb;Fe kb;Compton scattering
+Al;S;Al;Al
+Ti kb;Ni;Rh L + Ar;Rayleight scattering
+Compton scattering;Al;Ti kb;sum Fe
 Fe kb;sum Fe;sum Fe;P
-S;background3;Cu;Ti kb
-Ni;background2;Ni;background2
-Ti kb;Ti kb;background1;Mn
-Al;Cu;background3;Cu
-Rayleight scattering;Compton scattering;Zn;S
-background1;Zn;Compton scattering;Ni
-Cu;Rayleight scattering;background2;Zn
-Zn;background1;Rayleight scattering;background1
+Mn;background3;Cu;Ti kb
+background2;background2;Ni;background2
+Cu;Ti kb;background1;Mn
+Ni;Cu;Rayleight scattering;Cu
+Rayleight scattering;Compton scattering;background3;S
+background1;Zn;Zn;Ni
+Zn;Rayleight scattering;Compton scattering;Zn
+sum Fe;background1;background2;background1
 ;;;

@@ -7,11 +7,11 @@ Ti kb;Fe kb;Ag ka scattering;Ca kb
 Fe kb;Ti kb;Ca kb;Cu ka
 Ag ka scattering;Ca kb;Fe kb;Ti kb
 Ca kb;Ag ka scattering;Fe ka;Cu kb
-background3;Cu kb;background1;Ag ka scattering
-Zn kb;background3;Cu kb;background3
-Cu kb;Zn ka;Zn kb;Zn ka
+Cu kb;Cu kb;background1;Ag ka scattering
+background3;background3;Cu kb;background3
+Zn ka;Zn ka;Zn kb;Zn ka
 background1;background1;Zn ka;background1
-Zn ka;Zn kb;Ar ka + Ag L;background2
-background2;Ar ka + Ag L;background3;Zn kb
-Ar ka + Ag L;background2;background2;Ar ka + Ag L
+Zn kb;Zn kb;Ar ka + Ag L;background2
+Ar ka + Ag L;Ar ka + Ag L;background3;Zn kb
+background2;background2;background2;Ar ka + Ag L
 ;;;

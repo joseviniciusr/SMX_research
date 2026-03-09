@@ -3,21 +3,21 @@ Fe ka;Fe ka;Fe ka;Fe ka
 Fe kb;Fe kb;Ca ka;Fe kb
 Ca ka;Ca ka;Ti ka;Mn
 Mn;Ti ka;Fe kb;sum Fe
-background1;Si;Cu;Ti kb
-Ni;Mn;Si;Rh L + Ar
-Ti ka;sum Fe;Mn;Cr
-Cu;Rh L + Ar;P;Ti ka
-Cr;Cr;background1;Si
-Ca kb;Cu;background2;Cu
-background2;Ca kb;K;Ca ka
-Al;Ti kb;Zn;Al
-Si;P;Ni;background1
-P;K;Rh L + Ar;Ca kb
-Rh L + Ar;background1;sum Fe;background2
-Zn;Al;Fe ka + Ti ka;Zn
+Rh L + Ar;Si;Cu;Ti kb
+Ti ka;Mn;Si;Rh L + Ar
+background1;sum Fe;Mn;Cr
+sum Fe;Rh L + Ar;P;Ti ka
+Fe ka + Ti ka;Cr;background1;Si
+Cr;Cu;background2;Cu
+Ca kb;Ca kb;K;Ca ka
+Ni;Ti kb;Zn;Al
+background2;P;Ni;background1
+Ti kb;K;Rh L + Ar;Ca kb
+Si;background1;sum Fe;background2
+K;Al;Fe ka + Ti ka;Zn
 S;Zn;Ca kb;Ni
-K;background2;Cr;K
-sum Fe;Ni;Ti kb;P
-Fe ka + Ti ka;Fe ka + Ti ka;S;Fe ka + Ti ka
-Ti kb;S;Al;S
+P;background2;Cr;K
+Zn;Ni;Ti kb;P
+Cu;Fe ka + Ti ka;S;Fe ka + Ti ka
+Al;S;Al;S
 ;;;
