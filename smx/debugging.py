@@ -117,6 +117,14 @@ def svm_pvector_per_zone(svm_model, X_columns, spectral_cuts):
     ).reset_index(drop=True)
     return pvector_unique_df
 
+# export models' performance metrics
+def export_performance_metrics(df_results, output_path):
+    """Export model performance metrics DataFrame (result[0]) to a CSV file."""
+    df_results.to_csv(output_path, index=False, sep=';')
+    print(f"Performance metrics saved to {output_path}")
+    print(df_results)
+    return df_results
+
 
 def rbo_rank_comparison(features_importance, output_path):
     """Compute pairwise RBO scores between feature-importance rankings and save to CSV."""

@@ -403,6 +403,12 @@ def run_debugging(model_name, result, config, Xcalclass_prep, spectral_cuts, out
     print("Permutation importance per zone:")
     print(perm_unique)
 
+    # exporting the performance metrics of the models
+    dataset_name = config['name']
+    metrics_csv = output_dir / 'performance_metrics.csv'
+    dbg.export_performance_metrics(result[0], str(metrics_csv))
+    results['performance_metrics'] = result[0]
+
     return results
 
 
