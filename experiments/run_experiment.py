@@ -10,7 +10,6 @@ import argparse
 import os
 import random
 import warnings
-import sys
 from pathlib import Path
 
 import pandas as pd
@@ -20,16 +19,13 @@ import kennard_stone as ks
 # ── Path setup ───────────────────────────────────────────────────────────────
 SCRIPT_DIR = Path(__file__).resolve().parent
 WORKSPACE_ROOT = SCRIPT_DIR.parent
-SMX_DIR = WORKSPACE_ROOT / 'smx'
-if str(SMX_DIR) not in sys.path:
-    sys.path.insert(0, str(SMX_DIR))
 
-import preprocessings as prepr
-from modeling import pls_optimized, svm_optimized, mlp_optimized
-import explaining as exp
-import debugging as dbg
-from config import load_dataset_config, list_available_datasets
-from synthetic import generate_synthetic_spectral_data
+import smx_research.preprocessing as prepr
+from smx_research.models import pls_optimized, svm_optimized, mlp_optimized
+import smx_research.explaining as exp
+import smx_research.debugging as dbg
+from smx_research.config import load_dataset_config, list_available_datasets
+from smx_research.synthetic import generate_synthetic_spectral_data
 
 # ── Model dispatch table ─────────────────────────────────────────────────────
 MODEL_CONFIG = {
