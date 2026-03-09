@@ -145,65 +145,122 @@ def load_data(config):
 
 # ── Preprocessing ────────────────────────────────────────────────────────────
 
-def preprocess(config, Xcal, Xpred):
-    """Apply preprocessing based on config. Returns (Xcal_prep, Xpred_prep, preprocess_info)."""
-    method = config.get('preprocessing', 'poisson')
-    mc = config.get('preprocessing_mc', True)
+def _apply_single_preprocessing(method, params, Xcal, Xpred):
+    """Fit one preprocessing step on *Xcal* and apply the learned transform to *Xpred*.
 
+    Returns (Xcal_new, Xpred_new, info_dict).
+    """
     if method == 'poisson':
-        Xcal_prep, mean_original, mean_poisson = prepr.poisson(Xcal, mc=mc)
-        Xpred_prep = (Xpred / np.sqrt(mean_original)) - mean_poisson
-        return Xcal_prep, Xpred_prep, {'mean_original': mean_original, 'mean_poisson': mean_poisson}
+        mc = params.get('mc', True)
+        Xcal_new, mean_original, mean_poisson = prepr.poisson(Xcal, mc=mc)
+        Xpred_new = (Xpred / np.sqrt(mean_original)) - mean_poisson
+        return Xcal_new, Xpred_new, {'mean_original': mean_original, 'mean_poisson': mean_poisson}
 
     elif method == 'mc':
-        Xcal_prep, mean_original = prepr.mc(Xcal)
-        Xpred_prep = pd.DataFrame(Xpred.values - mean_original.values, columns=Xpred.columns)
-        return Xcal_prep, Xpred_prep, {'mean_original': mean_original}
+        Xcal_new, mean_original = prepr.mc(Xcal)
+        Xpred_new = pd.DataFrame(Xpred.values - mean_original.values, columns=Xpred.columns)
+        return Xcal_new, Xpred_new, {'mean_original': mean_original}
 
     elif method == 'savgol':
         from scipy.signal import savgol_filter
-        params = config.get('savgol_params', {})
         wl = params.get('window_length', 11)
         po = params.get('polyorder', 3)
         deriv = params.get('deriv', 0)
-
-        Xcal_sg = pd.DataFrame(
+        Xcal_new = pd.DataFrame(
             savgol_filter(Xcal.values, window_length=wl, polyorder=po, deriv=deriv, axis=1),
             columns=Xcal.columns
         )
-        Xpred_sg = pd.DataFrame(
+        Xpred_new = pd.DataFrame(
             savgol_filter(Xpred.values, window_length=wl, polyorder=po, deriv=deriv, axis=1),
             columns=Xpred.columns
         )
-        if mc:
-            Xcal_prep, mean_sg = prepr.mc(Xcal_sg)
-            Xpred_prep = pd.DataFrame(Xpred_sg.values - mean_sg.values, columns=Xpred.columns)
-            return Xcal_prep, Xpred_prep, {'mean_sg': mean_sg}
-        return Xcal_sg, Xpred_sg, {}
+        return Xcal_new, Xpred_new, {}
 
     elif method == 'auto_scaling':
-        Xcal_prep, sd_original, mean_original = prepr.auto_scaling(Xcal)
-        Xpred_prep = pd.DataFrame(
+        Xcal_new, sd_original, mean_original = prepr.auto_scaling(Xcal)
+        Xpred_new = pd.DataFrame(
             (Xpred.values / sd_original.values) - mean_original.values,
             columns=Xpred.columns
         )
-        return Xcal_prep, Xpred_prep, {'sd_original': sd_original, 'mean_original': mean_original}
+        return Xcal_new, Xpred_new, {'sd_original': sd_original, 'mean_original': mean_original}
 
     elif method == 'pareto':
-        Xcal_prep, mean_pareto = prepr.pareto(Xcal, mc=mc)
+        mc = params.get('mc', True)
+        Xcal_new, mean_pareto = prepr.pareto(Xcal, mc=mc)
         sd = np.std(Xcal, axis=0)
         escala_pareto = 1 / np.sqrt(sd)
         if mc:
-            Xpred_prep = pd.DataFrame(
+            Xpred_new = pd.DataFrame(
                 (Xpred.values * escala_pareto.values) - mean_pareto.values,
                 columns=Xpred.columns
             )
         else:
-            Xpred_prep = pd.DataFrame(Xpred.values * escala_pareto.values, columns=Xpred.columns)
-        return Xcal_prep, Xpred_prep, {'mean_pareto': mean_pareto}
+            Xpred_new = pd.DataFrame(Xpred.values * escala_pareto.values, columns=Xpred.columns)
+        return Xcal_new, Xpred_new, {'mean_pareto': mean_pareto}
 
     else:
-        raise ValueError(f"Unknown preprocessing method: {method}")
+        raise ValueError(f"Unknown preprocessing method: '{method}'")
+
+
+def preprocess(config, Xcal, Xpred):
+    """Apply preprocessing based on config. Returns (Xcal_prep, Xpred_prep, preprocess_info).
+
+    ``config['preprocessing']`` accepts two forms:
+
+    **Single string** (legacy, fully backward-compatible)::
+
+        "preprocessing": "poisson"          # uses preprocessing_mc flag
+        "preprocessing": "savgol"           # uses savgol_params + preprocessing_mc
+
+    **Ordered list of steps** — each step is a method name string *or* a dict with a
+    ``"method"`` key plus any per-step parameters::
+
+        "preprocessing": ["savgol", "mc"]
+        "preprocessing": [
+            {"method": "savgol", "window_length": 11, "polyorder": 3, "deriv": 1},
+            "mc"
+        ]
+
+    Steps are applied sequentially: the output of each step becomes the input of the next.
+    For every step the transform is *fitted on Xcal* and the learned parameters are then
+    applied to Xpred.
+    """
+    preprocessing = config.get('preprocessing', 'poisson')
+
+    if isinstance(preprocessing, str):
+        # ── Legacy single-string path (fully backward-compatible) ──────────
+        mc = config.get('preprocessing_mc', True)
+        if preprocessing == 'savgol':
+            savgol_p = dict(config.get('savgol_params', {}))
+            # mc becomes an explicit next step so savgol itself does no centering
+            steps = [{'method': 'savgol', **savgol_p}]
+            if mc:
+                steps.append({'method': 'mc'})
+        elif preprocessing in ('poisson', 'pareto'):
+            steps = [{'method': preprocessing, 'mc': mc}]
+        else:
+            steps = [{'method': preprocessing}]
+    else:
+        # ── New list-of-steps path ─────────────────────────────────────────
+        steps = []
+        for item in preprocessing:
+            if isinstance(item, str):
+                steps.append({'method': item})
+            else:
+                steps.append(dict(item))  # copy to avoid mutating config
+
+    # Apply steps sequentially, fitting each on the current Xcal
+    Xcal_curr, Xpred_curr = Xcal, Xpred
+    combined_info = {}
+    for i, step in enumerate(steps):
+        method = step['method']
+        step_params = {k: v for k, v in step.items() if k != 'method'}
+        Xcal_curr, Xpred_curr, info = _apply_single_preprocessing(
+            method, step_params, Xcal_curr, Xpred_curr
+        )
+        combined_info[f'step_{i}_{method}'] = info
+
+    return Xcal_curr, Xpred_curr, combined_info
 
 
 # ── Training ─────────────────────────────────────────────────────────────────
