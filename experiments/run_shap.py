@@ -23,6 +23,8 @@ import shap
 SCRIPT_DIR = Path(__file__).resolve().parent
 WORKSPACE_ROOT = SCRIPT_DIR.parent
 SMX_DIR = WORKSPACE_ROOT / 'smx'
+if str(WORKSPACE_ROOT) not in sys.path:
+    sys.path.insert(0, str(WORKSPACE_ROOT))
 if str(SMX_DIR) not in sys.path:
     sys.path.insert(0, str(SMX_DIR))
 
