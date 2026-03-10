@@ -1,6 +1,6 @@
 {
-  "name": "sediments",
-  "csv_file": "sediments.csv",
+  "name": "soyben",
+  "csv_file": "soyben.csv",
   "separator": ";",
   "class_column": "Class",
   "spectral_range": ["1.40", "23.10"],
