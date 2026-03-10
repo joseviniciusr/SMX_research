@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-CONFIGS_DIR = Path(__file__).resolve().parent.parent / 'real_datasets' / 'xrf'
+CONFIGS_DIR = Path(__file__).resolve().parent / 'real_datasets' / 'xrf'
 
 
 def load_dataset_config(dataset_name: str) -> dict:
