@@ -22,8 +22,8 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 WORKSPACE_ROOT = SCRIPT_DIR.parent
 sys.path.insert(0, str(WORKSPACE_ROOT))
 
-import preprocessing as prepr
-from models import pls_optimized, svm_optimized, mlp_optimized
+import preprocessings as prepr
+from modeling import pls_optimized, svm_optimized, mlp_optimized
 import explaining as exp
 import debugging as dbg
 from config import load_dataset_config, list_available_datasets
