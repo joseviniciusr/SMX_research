@@ -1,0 +1,61 @@
+{
+  "name": "soyben",
+  "csv_file": "soyben.csv",
+  "separator": ";",
+  "class_column": "Class",
+  "spectral_range": ["1.40", "23.10"],
+
+  "preprocessing": "poisson",
+  "preprocessing_mc": true,
+
+  "training_aim": "classification",
+  "random_seeds": [0, 1, 2, 3],
+  "seed": 42,
+  "test_size": 0.30,
+
+  "spectral_cuts": [
+    ["Al", 1.40, 1.66],
+    ["Si", 1.66, 1.86],
+    ["P", 1.86, 2.16],
+    ["S", 2.16, 2.44],
+    ["Rh L + Ar", 2.44, 3.10],
+    ["K", 3.10, 3.46],
+    ["Ca ka", 3.46, 3.86],
+    ["Ca kb", 3.86, 4.18],
+    ["Ti ka", 4.18, 4.66],
+    ["background1", 5.08, 5.72],
+    ["Mn", 5.72, 6.14],
+    ["Fe ka", 6.14, 6.68],
+    ["Fe kb", 6.68, 7.20],
+    ["Ni", 7.20, 7.70],
+    ["Cu", 7.70, 8.30],
+    ["Zn ka", 8.30, 9.10],
+    ["Zn kb", 9.10, 9.87],
+    ["background2", 9.87, 13.00],
+    ["Rb", 13.00, 13.75],
+    ["Sr", 13.75, 14.61],
+    ["Zr", 14.61, 15.50],
+    ["background3", 15.50, 17.70],
+    ["Compton ka", 17.70, 19.80],
+    ["Rayleigh ka", 19.80, 20.58],
+    ["Compton kb", 20.58, 22.12],
+    ["Rayleigh kb", 22.12, 23.10]
+  ],
+
+  "compatible_models": ["pls", "mlp", "svm"],
+  "model_params": {
+    "pls": {
+      "LVmax": 2,
+      "cv": 10
+    },
+    "mlp": {
+      "hidden_layer_sizes": [64, 32],
+      "activation": "tanh",
+      "learning_rate": "adaptive",
+      "max_iter": 10
+    },
+    "svm": {
+      "kernel": "rbf"
+    }
+  }
+}

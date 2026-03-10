@@ -1,0 +1,58 @@
+{
+  "name": "ecigar",
+  "csv_file": "ecigar.csv",
+  "separator": ";",
+  "class_column": "Class",
+  "spectral_range": ["0.997", "17.765"],
+
+  "preprocessing": "poisson",
+  "preprocessing_mc": true,
+
+  "training_aim": "classification",
+  "random_seeds": [0, 1, 2, 3],
+  "seed": 42,
+  "test_size": 0.30,
+
+  "spectral_cuts": [
+    ["Si", 0.997, 1.920],
+    ["background 1", 1.920, 2.413],
+    ["Cl", 2.413, 2.984],
+    ["background 2", 2.984, 3.134],
+    ["K", 3.134, 3.479],
+    ["Ca ka", 3.134, 3.839],
+    ["Ca kb", 3.839, 4.104],
+    ["Ti", 4.104, 4.823],
+    ["background 3", 4.823, 6.161],
+    ["Fe ka", 6.161, 6.732],
+    ["Fe kb", 6.732, 7.242],
+    ["Ni", 7.242, 7.712],
+    ["Cu", 7.712, 8.348],
+    ["Zn ka", 8.348, 8.963],
+    ["Ga", 8.963, 9.414],
+    ["Zn kb", 9.414, 9.739],
+    ["background 4", 9.739, 10.379],
+    ["Pb La", 10.379, 10.725],
+    ["background 5", 10.725, 12.391],
+    ["Pb Lb", 12.391, 12.831],
+    ["background 6", 12.831, 15.333],
+    ["Mo compton scattering", 15.333, 17.215],
+    ["Mo rayleigh scattering", 17.215, 17.765]
+  ],
+
+  "compatible_models": ["pls", "mlp", "svm"],
+  "model_params": {
+    "pls": {
+      "LVmax": 3,
+      "cv": 10
+    },
+    "mlp": {
+      "hidden_layer_sizes": [64, 32],
+      "activation": "tanh",
+      "learning_rate": "adaptive",
+      "max_iter": 10
+    },
+    "svm": {
+      "kernel": "rbf"
+    }
+  }
+}
