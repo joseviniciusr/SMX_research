@@ -37,11 +37,20 @@
     ["Rh kb Rayleigh", 22.3, 23.08]
   ],
 
-  "compatible_models": ["pls"],
+  "compatible_models": ["pls", "mlp", "svm"],
   "model_params": {
     "pls": {
       "LVmax": 1,
       "cv": 10
+    },
+    "mlp": {
+      "hidden_layer_sizes": [64, 32],
+      "activation": "tanh",
+      "learning_rate": "adaptive",
+      "max_iter": 10
+    },
+    "svm": {
+      "kernel": "rbf"
     }
   }
 }
