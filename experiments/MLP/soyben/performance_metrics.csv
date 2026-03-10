@@ -1,0 +1,4 @@
+Model;Accuracy Cal;Sensitivity Cal;Specificity Cal;CM Cal;Accuracy Pred;Sensitivity Pred;Specificity Pred;CM Pred
+MLP;0.875;0.8214285714285714;0.9166666666666666;"[[33  3]
+ [ 5 23]]";0.5517241379310345;0.7692307692307693;0.375;"[[ 6 10]
+ [ 3 10]]"
