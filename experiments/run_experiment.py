@@ -30,69 +30,6 @@ from config import load_dataset_config, list_available_datasets
 from synthetic import generate_synthetic_spectral_data
 
 
-# ── Research utility (was in explaining.py) ──────────────────────────────────
-
-def permutation_importance_per_zone(estimator, X, spectral_cuts, n_repeats=10,
-                                    random_state=42, scoring_fn=None):
-    """Compute permutation feature importance and aggregate by spectral zone.
-
-    Parameters
-    ----------
-    estimator : fitted model with a ``predict`` method.
-    X : pd.DataFrame
-        Preprocessed calibration data.
-    spectral_cuts : list of tuples
-        Each tuple is ``(zone_name, start, end)``.
-    n_repeats : int, default 10
-        Number of permutation repeats per feature.
-    random_state : int, default 42
-        Random seed.
-    scoring_fn : callable, optional
-        Custom prediction function ``f(X) -> predictions``.
-        If *None*, uses ``estimator.predict()``.
-
-    Returns
-    -------
-    permutation_unique_df : pd.DataFrame
-        Zone-deduplicated permutation importance ranking.
-    permutation_df : pd.DataFrame
-        Full per-feature permutation importance with zone mapping.
-    """
-    rng = np.random.RandomState(random_state)
-    predict = scoring_fn if scoring_fn is not None else estimator.predict
-    baseline_pred = predict(X)
-    importance_list = []
-    X_arr = X.copy()
-
-    for col in X.columns:
-        diffs = []
-        for _ in range(n_repeats):
-            X_perm = X_arr.copy()
-            X_perm[col] = rng.permutation(X_perm[col].values)
-            perm_pred = predict(X_perm)
-            diffs.append(np.mean(np.abs(baseline_pred - perm_pred)))
-        importance_list.append(np.mean(diffs))
-
-    permutation_df = pd.DataFrame({
-        'energy': X.columns,
-        'Permutation_importance': importance_list,
-    })
-    permutation_df.sort_values('Permutation_importance', ascending=False, inplace=True)
-
-    energy_to_zone = {}
-    for zone_name, start, end in spectral_cuts:
-        for e in permutation_df['energy']:
-            if start <= float(e) <= end:
-                energy_to_zone[e] = zone_name
-    permutation_df['Zone'] = permutation_df['energy'].map(energy_to_zone)
-
-    permutation_unique_df = (
-        permutation_df.drop_duplicates(subset=['Zone'], keep='first')
-        .sort_values('Permutation_importance', ascending=False)
-        .reset_index(drop=True)
-    )
-    return permutation_unique_df, permutation_df
-
 # ── Model dispatch table ─────────────────────────────────────────────────────
 MODEL_CONFIG = {
     'pls': {
@@ -717,122 +654,10 @@ def run_visualization_only(dataset, model_name, method):
     print(f"\nDone – figures saved under {output_dir}")
 
 
-# ── Debugging helpers ────────────────────────────────────────────────────────
-
-def run_debugging(model_name, result, config, Xcalclass_prep, spectral_cuts, output_dir):
-    """Run model-specific importance methods + SHAP zone + permutation importance.
-
-    Returns dict with zone-deduplicated DataFrames for each method.
-    """
-    mc = MODEL_CONFIG[model_name]
-    model = mc['model_extractor'](result)
-    results = {}
-
-    # Model-specific importance
-    if 'vip' in mc['importance_methods']:
-        vip_scores_mat = result[4]  # PLS vip
-        results['vip'] = dbg.vip_scores_per_zone(vip_scores_mat, spectral_cuts)
-        print("VIP scores per zone:")
-        print(results['vip'])
-
-    if 'reg_coef' in mc['importance_methods']:
-        results['reg_coef'] = dbg.regression_coefficients_per_zone(model, spectral_cuts)
-        print("Regression coefficients per zone:")
-        print(results['reg_coef'])
-
-    if 'pvector' in mc['importance_methods']:
-        results['pvector'] = dbg.svm_pvector_per_zone(
-            model, Xcalclass_prep.columns, spectral_cuts
-        )
-        print("SVM P-vector per zone:")
-        print(results['pvector'])
-
-    # SHAP from pre-computed CSV
-    dataset_name = config['name']
-    shap_csv = output_dir / f'shap_{dataset_name}.csv'
-    if shap_csv.exists():
-        results['shap'] = dbg.shap_per_zone(str(shap_csv), spectral_cuts)
-    else:
-        warnings.warn(f"SHAP CSV not found at {shap_csv}, skipping SHAP.")
-
-    # Permutation importance
-    scoring_fn = mc['permutation_scoring_fn']
-    if scoring_fn is not None:
-        scoring_fn = scoring_fn(model)
-
-    perm_unique, perm_full = permutation_importance_per_zone(
-        estimator=model,
-        X=Xcalclass_prep,
-        spectral_cuts=spectral_cuts,
-        n_repeats=10,
-        random_state=42,
-        scoring_fn=scoring_fn,
-    )
-    results['permutation'] = perm_unique
-    print("Permutation importance per zone:")
-    print(perm_unique)
-
-    # exporting the performance metrics of the models
-    dataset_name = config['name']
-    metrics_csv = output_dir / 'performance_metrics.csv'
-    dbg.export_performance_metrics(result[0], str(metrics_csv))
-    results['performance_metrics'] = result[0]
-
-    return results
-
-
-def build_feature_importance_table(model_name, debugging_results,
-                                   lrc_cov_unique=None, lrc_pert_unique=None):
-    """Assemble feature_importance DataFrame with model-appropriate columns."""
-    mc = MODEL_CONFIG[model_name]
-
-    # Collect all zone lists
-    zone_lists = {}
-
-    if lrc_cov_unique is not None:
-        zone_lists['LRC_covariance'] = list(lrc_cov_unique['Zone'])
-    if lrc_pert_unique is not None:
-        zone_lists['LRC_perturbation'] = list(lrc_pert_unique['Zone'])
-
-    if 'permutation' in debugging_results:
-        zone_lists['Permutation'] = list(debugging_results['permutation']['Zone'])
-
-    if 'vip' in debugging_results:
-        zone_lists['VIP_Score'] = list(debugging_results['vip']['Zone'])
-    if 'reg_coef' in debugging_results:
-        zone_lists['Reg_Coefficient'] = list(debugging_results['reg_coef']['Zone'])
-    if 'pvector' in debugging_results:
-        zone_lists['SVM_pvector'] = list(debugging_results['pvector']['Zone'])
-    if 'shap' in debugging_results:
-        zone_lists['Shap'] = list(debugging_results['shap']['Zone'])
-
-    if not zone_lists:
-        return pd.DataFrame()
-
-    max_len = max(len(v) for v in zone_lists.values())
-
-    def pad(lst):
-        return lst + [None] * (max_len - len(lst))
-
-    # Canonical column order per model type (model-specific first, then common)
-    COLUMN_ORDER = {
-        'pls': ['VIP_Score', 'Reg_Coefficient', 'Shap', 'Permutation',
-                 'LRC_perturbation', 'LRC_covariance'],
-        'svm': ['SVM_pvector', 'Shap', 'Permutation',
-                 'LRC_perturbation', 'LRC_covariance'],
-        'mlp': ['Shap', 'Permutation', 'LRC_perturbation', 'LRC_covariance'],
-    }
-    ordered_cols = [c for c in COLUMN_ORDER.get(model_name, [])
-                    if c in zone_lists]
-
-    fi_data = {k: pad(v) for k, v in zone_lists.items()}
-    df = pd.DataFrame(fi_data)
-    return df[ordered_cols] if ordered_cols else df
-
-
 # ── Main experiment orchestrator ─────────────────────────────────────────────
 
-def run_single_experiment(dataset, model_name, method, debugging, visualization=False):
+def run_single_experiment(dataset, model_name, method, visualization=False,
+                         run_shap_flag=False, run_permutation_flag=False):
     """Orchestrate a single (dataset, model) experiment."""
     print(f"\n{'#'*70}")
     print(f"# Experiment: dataset={dataset}, model={model_name}, method={method}")
@@ -857,6 +682,17 @@ def run_single_experiment(dataset, model_name, method, debugging, visualization=
     if model_name not in config.get('compatible_models', []):
         print(f"WARNING: model '{model_name}' not compatible with dataset '{dataset}'. Skipping.")
         return
+
+    # 2a. Run auxiliary techniques first (they train their own model copy)
+    if run_shap_flag:
+        print("\n--- Running SHAP (auxiliary technique) ---")
+        from run_shap import run_shap
+        run_shap(dataset, model_name)
+
+    if run_permutation_flag:
+        print("\n--- Running Permutation Importance (auxiliary technique) ---")
+        from run_permutation import run_permutation
+        run_permutation(dataset, model_name)
 
     # 3. Load data
     print("Loading data...")
@@ -894,14 +730,12 @@ def run_single_experiment(dataset, model_name, method, debugging, visualization=
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # 10. Run LRC pipelines
-    lrc_cov_unique = None
-    lrc_pert_unique = None
     lrc_cov_natural = None
     lrc_pert_natural = None
 
     if method in ('covariance', 'all'):
         print("\n--- Covariance Pipeline ---")
-        _, lrc_cov_unique, lrc_cov_natural, cov_zones_orig, cov_pca_orig = _run_lrc_pipeline(
+        _, _, lrc_cov_natural, cov_zones_orig, cov_pca_orig = _run_lrc_pipeline(
             config, 'covariance', zone_scores_df, y_pred_cont,
             predicates_df, pca_info_dict,
             Xcalclass, Xcalclass_prep, spectral_cuts,
@@ -919,7 +753,7 @@ def run_single_experiment(dataset, model_name, method, debugging, visualization=
 
     if method in ('perturbation', 'all'):
         print("\n--- Perturbation Pipeline ---")
-        _, lrc_pert_unique, lrc_pert_natural, pert_zones_orig, pert_pca_orig = _run_lrc_pipeline(
+        _, _, lrc_pert_natural, pert_zones_orig, pert_pca_orig = _run_lrc_pipeline(
             config, 'perturbation', zone_scores_df, y_pred_cont,
             predicates_df, pca_info_dict,
             Xcalclass, Xcalclass_prep, spectral_cuts,
@@ -935,30 +769,50 @@ def run_single_experiment(dataset, model_name, method, debugging, visualization=
                 ycalclass, output_dir, prefix='pert'
             )
 
-    # 11. Debugging extras
-    debugging_results = {}
-    if debugging:
-        print("\n--- Debugging ---")
-        debugging_results = run_debugging(
-            model_name, result, config, Xcalclass_prep, spectral_cuts, output_dir
-        )
+    # 11. Export model-specific importance (lightweight, always saved)
+    dataset_name = config['name']
+    print("\n--- Model-specific importance ---")
 
-    # 12. Feature importance table
-    if debugging:
-        features_importance = build_feature_importance_table(
-            model_name, debugging_results,
-            lrc_cov_unique=lrc_cov_unique,
-            lrc_pert_unique=lrc_pert_unique
-        )
-        if not features_importance.empty:
-            features_importance.to_csv(
-                output_dir / 'feature_importance.csv', index=False, sep=';'
-            )
-            print("\nFeature importance table:")
-            print(features_importance)
+    if 'vip' in mc['importance_methods']:
+        vip_scores_mat = result[4]  # PLS vip
+        vip_df = pd.DataFrame({
+            'energy': vip_scores_mat.T.index,
+            'VIP_Score': vip_scores_mat.T.iloc[:, 0].values
+        })
+        vip_df.sort_values('VIP_Score', ascending=False, inplace=True)
+        vip_path = output_dir / f'vip_{dataset_name}.csv'
+        vip_df.to_csv(vip_path, index=False, sep=';')
+        print(f"  VIP scores saved to {vip_path}")
 
-            # RBO
-            dbg.rbo_rank_comparison(features_importance, output_dir / 'rbo_rank.csv')
+    if 'reg_coef' in mc['importance_methods']:
+        reg_vet = pd.DataFrame(
+            model.coef_, columns=model.feature_names_in_
+        ).T
+        reg_vet.insert(0, 'energy', reg_vet.index)
+        reg_vet = reg_vet.reset_index(drop=True)
+        reg_vet.columns = ['energy', 'Reg_coef']
+        reg_vet['Abs_Reg_coef'] = reg_vet['Reg_coef'].abs()
+        reg_vet.sort_values('Abs_Reg_coef', ascending=False, inplace=True)
+        reg_path = output_dir / f'reg_coef_{dataset_name}.csv'
+        reg_vet.to_csv(reg_path, index=False, sep=';')
+        print(f"  Regression coefficients saved to {reg_path}")
+
+    if 'pvector' in mc['importance_methods']:
+        X_sv = model.support_vectors_
+        alpha_dual = model.dual_coef_.ravel()
+        importance = np.abs(X_sv.T @ alpha_dual)
+        pvector_df = pd.DataFrame({
+            'energy': Xcalclass_prep.columns,
+            'Pvector': importance
+        })
+        pvector_df.sort_values('Pvector', ascending=False, inplace=True)
+        pvector_path = output_dir / f'pvector_{dataset_name}.csv'
+        pvector_df.to_csv(pvector_path, index=False, sep=';')
+        print(f"  SVM P-vector saved to {pvector_path}")
+
+    # 12. Export performance metrics
+    metrics_csv = output_dir / 'performance_metrics.csv'
+    dbg.export_performance_metrics(result[0], str(metrics_csv))
 
     # 13. Save LRC artifacts
     if lrc_cov_natural is not None:
@@ -981,8 +835,10 @@ def main():
     parser.add_argument('--method', default='all',
                         choices=['covariance', 'perturbation', 'all'],
                         help='LRC method(s) to run')
-    parser.add_argument('--debugging', action='store_true',
-                        help='Enable non-core extras (permutation, model importance, SHAP, RBO)')
+    parser.add_argument('--shap', action='store_true',
+                        help='Run SHAP computation before the SMX experiment')
+    parser.add_argument('--permutation', action='store_true',
+                        help='Run permutation importance before the SMX experiment')
     parser.add_argument('--visualization', action='store_true',
                         help='Export threshold-spectrum HTML figures (one per LRC row)')
     parser.add_argument('--visualization-only', action='store_true',
@@ -1000,8 +856,12 @@ def main():
                 if args.visualization_only:
                     run_visualization_only(ds, mdl, args.method)
                 else:
-                    run_single_experiment(ds, mdl, args.method, args.debugging,
-                                          visualization=args.visualization)
+                    run_single_experiment(
+                        ds, mdl, args.method,
+                        visualization=args.visualization,
+                        run_shap_flag=args.shap,
+                        run_permutation_flag=args.permutation,
+                    )
             except Exception as e:
                 print(f"\nERROR running {ds}/{mdl}: {e}")
                 import traceback
