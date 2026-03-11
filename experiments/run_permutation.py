@@ -149,6 +149,15 @@ def run_permutation(dataset, model_name, new_only=False):
         scoring_fn=scoring_fn,
     )
 
+    # 7b. Map energy to spectral zone
+    spectral_cuts = [tuple(sc) for sc in config['spectral_cuts']]
+    energy_to_zone = {}
+    for zone_name, start, end in spectral_cuts:
+        for e in perm_df['energy']:
+            if start <= float(e) <= end:
+                energy_to_zone[e] = zone_name
+    perm_df['Zone'] = perm_df['energy'].map(energy_to_zone)
+
     # 8. Save to the same path that run_analysis.py expects
     output_dir = SCRIPT_DIR / model_name.upper() / dataset
     output_dir.mkdir(parents=True, exist_ok=True)
