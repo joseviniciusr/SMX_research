@@ -8,7 +8,6 @@ The protocol combines objective and domain-grounded evaluation dimensions [R1].
 - Task type: binary classification (main metric: F1 and Accuracy).
 - Explanation granularity:
   - Zone-level ranking.
-  - Predicate-boundary ranking (SMX predicates).
 - Methods:
   - `SMX`
   - `SHAP`
@@ -18,11 +17,20 @@ The protocol combines objective and domain-grounded evaluation dimensions [R1].
 ## Common Protocol (for all experiments)
 
 ### Data splitting
-- Use `10` random seeds.
-- For each seed:
+- Use `10` split seeds (`split_seed`).
+- For each `split_seed`:
   - Shuffle data and run repeated stratified CV.
   - Recommended: `5x2` repeated stratified K-fold (5 folds, 2 repeats).
 - Keep train/test splits identical across explainers within each seed/fold.
+
+### Seed control
+- `split_seed`: controls only dataset shuffling and train/test fold assignment.
+- `model_seed`: controls only model creation/training randomness (e.g., MLP initialization, stochastic optimizer order).
+- Use both and log both in outputs.
+- Recommended protocol:
+  - Stability wrt data split: vary `split_seed`, keep `model_seed` fixed.
+  - Stability wrt model stochasticity: vary `model_seed`, keep `split_seed` fixed.
+  - Full variability analysis: vary both.
 
 ### Models
 - Compare at least: `PLS-DA`, `SVM`, `MLP`.
@@ -33,7 +41,6 @@ The protocol combines objective and domain-grounded evaluation dimensions [R1].
 - Always compute explanations on test samples (or train+test if explicitly needed, but report which one).
 - For each method, export:
   - Zone ranking list.
-  - Predicate ranking list (when applicable or derived as defined below).
 
 ### Statistical reporting
 - Report mean and `95% CI` over all seed-fold runs.
@@ -70,46 +77,28 @@ This is aligned with perturbation-based faithfulness/comprehensiveness evaluatio
 - `ACC_drop(k) = ACC_original - ACC_masked(k)`
 - Optional summary: area under degradation curve (larger means more faithful ranking).
 
-### 1.2 Sub-experiment B: Predicate boundaries and remove top-k predicates
-
-Use the same principle on predicate boundaries (threshold predicates).
-This sub-experiment is evaluated for `SMX` only.
-
-#### Predicate set
-- Use a common predicate dictionary (SMX-generated boundaries from quantiles), shared by all methods for fairness.
-
-#### Predicate scoring
-- SMX: use predicate relevance directly.
-
-#### Predicate removal operator
-- For top-k predicates:
-  - Neutralize predicate condition in test set (set involved zone score to boundary value or local median so condition impact is removed).
-  - Recompute predictions with same trained model.
-
-#### Metrics
-- `F1_drop_pred(k)`
-- `ACC_drop_pred(k)`
-
 
 ---
 
 ## 2) Stability
 
-Measure ranking consistency across random seeds (10 seeds), using RBO.
+Measure ranking consistency using RBO under controlled seed variation.
 This uses RBO for top-weighted rank similarity [R9].
 
 ### Definition
-- For each method, build ranking lists from different seed runs.
+- For each method, build ranking lists from repeated runs with explicit seed mode:
+  - `split-seed stability`: rankings across different `split_seed` with fixed `model_seed`.
+  - `model-seed stability`: rankings across different `model_seed` with fixed `split_seed`.
 - Compute pairwise `RBO` among runs of the same method.
 - Stability score = mean pairwise RBO.
 
 ### Report
-- `mean_RBO_zones(method)`
-- `mean_RBO_predicates(method)`
+- `mean_RBO_zones_split_seed(method)`
+- `mean_RBO_zones_model_seed(method)`
 - Include 95% CI.
 
 Recommended RBO parameter:
-- `p = 0.9` (top-weighted; adjust if stronger top emphasis is desired).
+- `p = 0.7` (top-weighted; adjust if stronger top emphasis is desired).
 
 ---
 
@@ -122,6 +111,7 @@ Motivation: explanations can vary across different model classes fitted on the s
 - Reuse the same seed/fold protocol from Stability.
 - For each method (SMX, SHAP, VIP, permutation):
   - Compare rankings generated from different algorithms (`PLS-DA`, `SVM`, `MLP`) on the same data splits.
+  - Use fixed `split_seed` and fixed `model_seed` when comparing algorithms in the same run.
   - Compute RBO between algorithm pairs:
     - `PLS-DA vs SVM`
     - `PLS-DA vs MLP`
@@ -135,12 +125,11 @@ Motivation: explanations can vary across different model classes fitted on the s
 
 ## 4) Domain-Grounded Evaluation
 
-Human expert validation of top predicates/zones.
+Human expert validation of top zones.
 This corresponds to application-grounded evaluation [R1], [R12].
 
 ### Input to expert
-- For each method and run, show top-N predicates (and top-N zones), with:
-  - Boundary interval / threshold,
+- For each method and run, show top-N zones with:
   - mapped spectral range,
   - associated elemental annotation (if available).
 
@@ -161,7 +150,7 @@ Methods to include:
 - Permutation-by-zone baseline
 
 Compare methods on:
-- Faithfulness (zone for all methods; predicate for SMX only)
+- Faithfulness (zone only)
 - Stability (RBO across seeds)
 - Model dependence (RBO across algorithms)
 - Domain-grounded agreement
@@ -169,7 +158,6 @@ Compare methods on:
 
 All comparisons must use:
 - identical seed/fold splits,
-- identical masking/neutralization operators,
 - identical metric computation.
 
 ---
@@ -178,10 +166,10 @@ All comparisons must use:
 
 Focus metrics:
 
-### 6.1 Number of top predicates to explain 80% relevance
-- Sort predicates by relevance descending.
+### 6.1 Number of top zones to explain 80% relevance
+- Sort zones by relevance descending.
 - Compute cumulative relevance ratio.
-- `N80_predicates = minimum n such that cumulative_relevance(n) >= 0.80`.
+- `N80_zones = minimum n such that cumulative_relevance(n) >= 0.80`.
 - Lower is more comprehensible (more compact explanation).
 Related interpretability notions: simulatability and compactness [R15], [R16].
 
@@ -197,17 +185,15 @@ Related interpretability notions: simulatability and compactness [R15], [R16].
 
 Recommended CSV outputs:
 - `faithfulness_zone_curve.csv`
-  - columns: `seed, fold, model, method, k, f1_original, f1_masked, f1_drop, acc_original, acc_masked, acc_drop`
-- `faithfulness_predicate_curve.csv`
-  - same schema with predicate fields
+  - columns: `split_seed, model_seed, fold, model, method, k, f1_original, f1_masked, f1_drop, acc_original, acc_masked, acc_drop`
 - `stability_rbo.csv`
-  - columns: `method, granularity(zone|predicate), run_i, run_j, rbo`
+  - columns: `method, granularity(zone), stability_mode(split_seed|model_seed), run_i, run_j, split_seed_i, model_seed_i, split_seed_j, model_seed_j, rbo`
 - `model_dependence_rbo.csv`
-  - columns: `method, granularity, model_a, model_b, seed, fold, rbo`
+  - columns: `method, granularity(zone), model_a, model_b, split_seed, model_seed, fold, rbo`
 - `domain_grounded_expert_review.csv`
-  - columns: `method, model, item_type(zone|predicate), item_id, rank, plausible_yes_no, expert_id`
+  - columns: `split_seed, model_seed, method, model, item_type(zone), item_id, rank, plausible_yes_no, expert_id`
 - `comprehensibility_metrics.csv`
-  - columns: `seed, fold, model, method, n80_predicates, elemental_match_k5, elemental_match_k10`
+  - columns: `split_seed, model_seed, fold, model, method, n80_zones, elemental_match_k5, elemental_match_k10`
 
 Recommended summary file:
 - `xai_metrics_summary.csv`
