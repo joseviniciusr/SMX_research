@@ -24,7 +24,8 @@ sys.path.insert(0, str(WORKSPACE_ROOT))
 
 import preprocessings as prepr
 from modeling import pls_optimized, svm_optimized, mlp_optimized
-import explaining as exp
+import smx
+from explaining import permutation_importance_per_zone
 import debugging as dbg
 from config import load_dataset_config, list_available_datasets
 from synthetic import generate_synthetic_spectral_data
@@ -279,12 +280,13 @@ def extract_y_continuous(model_name, result):
 
 # ── LRC Pipelines ────────────────────────────────────────────────────────────
 
-def _run_lrc_pipeline(config, metric_type, zone_scores_df, y_pred, predicates_quantiles,
+def _run_lrc_pipeline(config, metric_type, zone_scores_df, y_pred, predicates_df,
                       pca_info_dict, Xcalclass, Xcalclass_prep, spectral_cuts,
                       model=None, model_name=None):
     """Run covariance or perturbation LRC pipeline across seeds.
 
-    Returns: (lrc_summed_df, lrc_summed_unique_df, lrc_natural_df)
+    Returns: (lrc_summed_df, lrc_summed_unique_df, lrc_natural_df,
+              spectral_zones_original, pca_info_dict_original)
     """
     random_seeds = config.get('random_seeds', [0, 1, 2, 3])
     training_samples = len(zone_scores_df)
@@ -297,18 +299,16 @@ def _run_lrc_pipeline(config, metric_type, zone_scores_df, y_pred, predicates_qu
         print(f"Processing seed ({metric_type}): {seed}")
         print(f"{'='*70}\n")
 
-        bags_result_seed = exp.bagging_predicates(
-            zone_sums_df=zone_scores_df,
-            y_predicted_numeric=y_pred_series,
-            predicates_df=predicates_quantiles[0],
+        bagger = smx.PredicateBagger(
             n_bags=10,
             n_samples_per_bag=int(training_samples * 0.8),
             min_samples_per_predicate=int(training_samples * 0.2),
             replace=False,
             sample_bagging=True,
             predicate_bagging=False,
-            random_seed=seed
+            random_seed=seed,
         )
+        bags_result_seed = bagger.run(zone_scores_df, y_pred_series, predicates_df)
 
         for bag_name, pred_dict in bags_result_seed.items():
             for pred_rule, df_info in pred_dict.items():
@@ -317,28 +317,25 @@ def _run_lrc_pipeline(config, metric_type, zone_scores_df, y_pred, predicates_qu
                 )
 
         if metric_type == 'covariance':
-            metric_results = exp.calculate_predicate_metrics(
-                bags_result=bags_result_seed,
-                metric='covariance',
-                threshold=0.01,
-                n_neighbors=5
+            metric_obj = smx.CovarianceMetric(
+                metric='covariance', threshold=0.01, n_neighbors=5
             )
+            metric_results = metric_obj.compute(bags_result_seed)
         else:  # perturbation
             mc = MODEL_CONFIG[model_name]
-            metric_results = exp.calculate_predicate_perturbation(
+            metric_obj = smx.PerturbationMetric(
                 estimator=model,
                 Xcalclass_prep=Xcalclass_prep,
-                folds_struct=bags_result_seed,
-                predicates_df=predicates_quantiles[0],
+                predicates_df=predicates_df,
                 spectral_cuts=spectral_cuts,
                 perturbation_mode='median',
                 stats_source='full',
-                aim=mc['perturbation_aim'],
                 metric=mc['perturbation_metric'],
                 verbose=True,
                 normalize_by_zone_size=True,
-                zone_size_exponent=1.0,  
+                zone_size_exponent=1.0,
             )
+            metric_results = metric_obj.compute(bags_result_seed)
 
         all_results[seed] = {
             'bags_result': bags_result_seed,
@@ -352,14 +349,16 @@ def _run_lrc_pipeline(config, metric_type, zone_scores_df, y_pred, predicates_qu
         print(f"\n{'='*70}")
         print(f"Processing graph ({metric_type}) - Seed: {seed}")
         print(f"{'='*70}\n")
-        DG = exp.build_predicate_graph(
-            bags_result=all_results[seed]['bags_result'],
-            predicate_ranking_dict=all_results[seed]['metric_results'],
-            metric_column=metric_column,
+        builder = smx.PredicateGraphBuilder(
             random_state=seed,
             show_details=True,
             var_exp=True,
-            pca_info_dict=pca_info_dict
+            pca_info_dict=pca_info_dict,
+        )
+        DG = builder.build(
+            bags_result=all_results[seed]['bags_result'],
+            predicate_ranking_dict=all_results[seed]['metric_results'],
+            metric_column=metric_column,
         )
         graphs_by_seed[seed] = DG
 
@@ -372,7 +371,7 @@ def _run_lrc_pipeline(config, metric_type, zone_scores_df, y_pred, predicates_qu
         if len(predicate_nodes) == 0:
             print(f"  WARNING: seed {seed} produced an empty graph ({metric_type}), skipping.")
             continue
-        lrc_df_seed = exp.calculate_lrc_single_graph(DG, predicates_quantiles[0])
+        lrc_df_seed = smx.compute_lrc(DG, predicates_df)
         lrc_df_seed['Seed'] = seed
         lrc_by_seed[seed] = lrc_df_seed
 
@@ -384,23 +383,24 @@ def _run_lrc_pipeline(config, metric_type, zone_scores_df, y_pred, predicates_qu
 
     # Phase 4: aggregate across seeds
     valid_seeds = list(lrc_by_seed.keys())
-    lrc_summed_df, lrc_summed_unique_df = exp.aggregate_lrc_across_seeds(
+    lrc_summed_df, lrc_summed_unique_df = smx.aggregate_lrc_across_seeds(
         lrc_by_seed, valid_seeds
     )
     print(lrc_summed_unique_df)
 
     # Phase 5: map to natural scale
-    spectral_zones_original = exp.extract_spectral_zones(Xcalclass, spectral_cuts)
-    zones_original = exp.aggregate_spectral_zones_pca(spectral_zones_original)
+    spectral_zones_original = smx.extract_spectral_zones(Xcalclass, spectral_cuts)
+    agg_original = smx.ZoneAggregator(method='pca')
+    zone_scores_natural = agg_original.fit_transform(spectral_zones_original)
 
-    lrc_natural_df = exp.map_thresholds_to_natural(
+    lrc_natural_df = smx.map_thresholds_to_natural(
         lrc_df=lrc_summed_df,
         zone_sums_preprocessed=zone_scores_df,
-        zone_sums_natural=zones_original[0]
+        zone_sums_natural=zone_scores_natural,
     )
     print(lrc_natural_df)
 
-    pca_info_dict_original = zones_original[1]
+    pca_info_dict_original = agg_original.pca_info_
 
     return lrc_summed_df, lrc_summed_unique_df, lrc_natural_df, spectral_zones_original, pca_info_dict_original
 
@@ -448,7 +448,7 @@ def save_visualization_data(lrc_natural_df, spectral_zones_original,
             for _, lrc_row in zone_rows.iterrows():
                 thresh_val = float(lrc_row['Threshold_Natural'])
                 node_natural = lrc_row.get('Node_Natural', lrc_row.get('Node', ''))
-                thresh_spectrum = exp.reconstruct_threshold_to_spectrum(
+                thresh_spectrum = smx.reconstruct_threshold_to_spectrum(
                     threshold_value=thresh_val,
                     zone_name=zone_name,
                     pca_info_dict=pca_info_dict_original,
@@ -502,7 +502,7 @@ def build_and_export_figure(lrc_natural_df, spectral_zones_original,
         node_natural = row.get('Node_Natural', row.get('Node', ''))
 
         # Reconstruct threshold spectrum
-        threshold_spectrum = exp.reconstruct_threshold_to_spectrum(
+        threshold_spectrum = smx.reconstruct_threshold_to_spectrum(
             threshold_value=threshold_score,
             zone_name=zone_name,
             pca_info_dict=pca_info_dict_original
@@ -697,7 +697,7 @@ def run_debugging(model_name, result, config, Xcalclass_prep, spectral_cuts, out
     if scoring_fn is not None:
         scoring_fn = scoring_fn(model)
 
-    perm_unique, perm_full = exp.permutation_importance_per_zone(
+    perm_unique, perm_full = permutation_importance_per_zone(
         estimator=model,
         X=Xcalclass_prep,
         spectral_cuts=spectral_cuts,
@@ -815,12 +815,16 @@ def run_single_experiment(dataset, model_name, method, debugging, visualization=
 
     # 7. PCA aggregation
     print("PCA aggregation...")
-    spectral_zones_class = exp.extract_spectral_zones(Xcalclass_prep, spectral_cuts)
-    zone_scores_df, pca_info_dict = exp.aggregate_spectral_zones_pca(spectral_zones_class)
+    spectral_zones_class = smx.extract_spectral_zones(Xcalclass_prep, spectral_cuts)
+    aggregator = smx.ZoneAggregator(method='pca')
+    zone_scores_df = aggregator.fit_transform(spectral_zones_class)
+    pca_info_dict = aggregator.pca_info_
     print(f"  Zone scores shape: {zone_scores_df.shape}")
 
     # 8. Predicates
-    predicates_quantiles = exp.predicates_by_quantiles(zone_scores_df, [0.2, 0.4, 0.6, 0.8])
+    pred_gen = smx.PredicateGenerator(quantiles=[0.2, 0.4, 0.6, 0.8])
+    pred_gen.fit(zone_scores_df)
+    predicates_df = pred_gen.predicates_df_
 
     # 9. Output directory
     output_dir = SCRIPT_DIR / model_name.upper() / dataset
@@ -836,7 +840,7 @@ def run_single_experiment(dataset, model_name, method, debugging, visualization=
         print("\n--- Covariance Pipeline ---")
         _, lrc_cov_unique, lrc_cov_natural, cov_zones_orig, cov_pca_orig = _run_lrc_pipeline(
             config, 'covariance', zone_scores_df, y_pred_cont,
-            predicates_quantiles, pca_info_dict,
+            predicates_df, pca_info_dict,
             Xcalclass, Xcalclass_prep, spectral_cuts,
             model=model, model_name=model_name
         )
@@ -854,7 +858,7 @@ def run_single_experiment(dataset, model_name, method, debugging, visualization=
         print("\n--- Perturbation Pipeline ---")
         _, lrc_pert_unique, lrc_pert_natural, pert_zones_orig, pert_pca_orig = _run_lrc_pipeline(
             config, 'perturbation', zone_scores_df, y_pred_cont,
-            predicates_quantiles, pca_info_dict,
+            predicates_df, pca_info_dict,
             Xcalclass, Xcalclass_prep, spectral_cuts,
             model=model, model_name=model_name
         )
