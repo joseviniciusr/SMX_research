@@ -1,17 +1,17 @@
-SVM_pvector;Shap;Permutation;LRC_perturbation
-Fe ka;Ti ka;Fe ka;Ti ka
-Ti ka;Ca ka;Ti ka;Ca ka
-Cu ka;Fe ka;Ca ka;Cu ka
-Ag ka scattering;Cu ka;Cu ka;Ti kb
-Fe kb;Ti kb;Ti kb;Ag ka scattering
-Ti kb;Ag ka scattering;Fe kb;Fe kb
-Ca ka;background3;Ag ka scattering;Ca kb
-Cu kb;Fe kb;Ca kb;Fe ka
-background3;Zn kb;background3;Cu kb
-Ca kb;Zn ka;Cu kb;Zn ka
-background1;Ar ka + Ag L;background1;background1
-Zn ka;background1;Ar ka + Ag L;Ar ka + Ag L
-Ar ka + Ag L;background2;Zn ka;background3
-;Ca kb;Zn kb;background2
-background2;Cu kb;background2;Zn kb
-Zn kb;;;
+Shap;Permutation;LRC_perturbation;LRC_covariance
+Ti ka;Fe ka;Ti ka;Fe ka
+Ca ka;Ti ka;Ca ka;Ca ka
+Fe ka;Ca ka;Cu ka;Fe kb
+Cu ka;Cu ka;Ti kb;Ti ka
+Ti kb;Ti kb;Ag ka scattering;Ca kb
+Ag ka scattering;Fe kb;Fe kb;Cu ka
+background3;Ag ka scattering;Ca kb;Ti kb
+Fe kb;Ca kb;Fe ka;Cu kb
+Zn kb;background3;Cu kb;Ag ka scattering
+Zn ka;Cu kb;Zn ka;background3
+Ar ka + Ag L;background1;background1;Zn ka
+background1;Ar ka + Ag L;Ar ka + Ag L;background1
+background2;Zn ka;background3;Ar ka + Ag L
+Ca kb;Zn kb;background2;background2
+Cu kb;background2;Zn kb;Zn kb
+;;;

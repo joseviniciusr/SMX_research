@@ -1,23 +1,23 @@
-VIP_Score;Reg_Coefficient;Shap;Permutation;LRC_perturbation
-Rb ka + Br kb;Rb ka + Br kb;K ka;K ka;K ka
-K ka;K ka;Rb ka + Br kb;Rb ka + Br kb;Rb ka + Br kb
-Fe ka;Fe ka;K kb + Ca ka;K kb + Ca ka;K kb + Ca ka
-K kb + Ca ka;K kb + Ca ka;Rh ka Compton;Fe ka;Cl
-background2;background2;Fe ka;Cl;Rh ka Rayleigh
-Cl;Cl;background2;Rh ka Compton;Br ka
-Cu;Cu;Rb kb;Rh ka Rayleigh;Fe ka
-Ca kb;Ca kb;Cu;Rb kb;background2
-Rb kb;Rb kb;Ca kb;Ca kb;Rh kb Rayleigh
-Rh kb Rayleigh;Rh kb Rayleigh;Cl;background2;Rb kb
-Br ka;Br ka;Rh kb Compton;Rh kb Compton;S
-Rh ka Rayleigh;Rh ka Rayleigh;Br ka;Cu;Rh kb Compton
-Sr ka;Sr ka;Rh kb Rayleigh;Rh kb Rayleigh;Sr ka
-background1;background1;S;Sr ka;Cu
-background3;background3;Fe kb;Br ka;background3
-Rh kb Compton;Rh kb Compton;background1;background3;Fe kb
-Fe kb;Fe kb;Mn;Zn;Zn
-Zn;Zn;Zn;Fe kb;Ca kb
-Rh ka Compton;Rh ka Compton;background3;background1;Rh ka Compton
-Mn;Mn;Sr ka;Mn;Mn
-S;S;Rh ka Rayleigh;S;background1
-;;;;
+Shap;Permutation;LRC_perturbation;LRC_covariance
+K ka;K ka;K ka;K ka
+Rb ka + Br kb;Rb ka + Br kb;Rb ka + Br kb;background3
+K kb + Ca ka;K kb + Ca ka;K kb + Ca ka;background2
+Rh ka Compton;Fe ka;Cl;Rh ka Compton
+Fe ka;Cl;Rh ka Rayleigh;Rb ka + Br kb
+background2;Rh ka Compton;Br ka;K kb + Ca ka
+Rb kb;Rh ka Rayleigh;Fe ka;Rh ka Rayleigh
+Cu;Rb kb;background2;Rh kb Compton
+Ca kb;Ca kb;Rh kb Rayleigh;Br ka
+Cl;background2;Rb kb;Cu
+Rh kb Compton;Rh kb Compton;S;Fe kb
+Br ka;Cu;Rh kb Compton;Cl
+Rh kb Rayleigh;Rh kb Rayleigh;Sr ka;Rh kb Rayleigh
+S;Sr ka;Cu;Sr ka
+Fe kb;Br ka;background3;Rb kb
+background1;background3;Fe kb;Mn
+Mn;Zn;Zn;Zn
+Zn;Fe kb;Ca kb;Fe ka
+background3;background1;Rh ka Compton;S
+Sr ka;Mn;Mn;background1
+Rh ka Rayleigh;S;background1;
+;;;

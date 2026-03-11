@@ -1,28 +1,28 @@
-VIP_Score;Reg_Coefficient;Shap;Permutation;LRC_perturbation
-Fe ka;Zn ka;Fe ka;Fe ka;Fe ka
-Zn ka;Mn;Zn ka;Compton ka;Rayleigh ka
-Fe kb;Rayleigh ka;Compton ka;Zn ka;Zn ka
-Rayleigh ka;Ca ka;K;Rayleigh ka;K
-Mn;Sr;Rayleigh ka;K;Ca ka
-Ca ka;Rb;Sr;Sr;Compton kb
-Sr;Compton ka;Ca ka;Compton kb;Sr
-Rb;background2;Fe kb;Ca ka;Mn
-Compton ka;K;Rb;Fe kb;Compton ka
-background2;Compton kb;Mn;Mn;Zr
-Compton kb;Zn kb;Ca kb;Rb;background2
-K;Fe ka;Cu;background2;S
-Zn kb;Ca kb;Compton kb;background3;Rayleigh kb
-Cu;Rh L + Ar;background2;Zr;Cu
-Ca kb;Cu;S;Rh L + Ar;Si
-Rh L + Ar;Ni;P;Ca kb;Ca kb
-Ni;background3;background3;Zn kb;Zn kb
-background3;S;Zn kb;Rayleigh kb;Al
-S;Ti ka;Rh L + Ar;Cu;Rb
-Ti ka;Fe kb;Zr;Ti ka;Fe kb
-;Zr;Al;S;P
-Zr;;Si;P;Rh L + Ar
-background1;background1;Ti ka;Ni;background1
-Rayleigh kb;P;;background1;background3
-P;Rayleigh kb;background1;;Ti ka
-Al;Al;Ni;Al;Ni
-Si;Si;Rayleigh kb;Si;
+Shap;Permutation;LRC_perturbation
+Fe ka;Fe ka;Fe ka
+Zn ka;Compton ka;Rayleigh ka
+Compton ka;Zn ka;Zn ka
+K;Rayleigh ka;K
+Rayleigh ka;K;Ca ka
+Sr;Sr;Compton kb
+Ca ka;Compton kb;Sr
+Fe kb;Ca ka;Mn
+Rb;Fe kb;Compton ka
+Mn;Mn;Zr
+Ca kb;Rb;background2
+Cu;background2;S
+Compton kb;background3;Rayleigh kb
+background2;Zr;Cu
+S;Rh L + Ar;Si
+P;Ca kb;Ca kb
+background3;Zn kb;Zn kb
+Zn kb;Rayleigh kb;Al
+Rh L + Ar;Cu;Rb
+Zr;Ti ka;Fe kb
+Al;S;P
+Si;P;Rh L + Ar
+Ti ka;Ni;background1
+;background1;background3
+background1;;Ti ka
+Ni;Al;Ni
+Rayleigh kb;Si;

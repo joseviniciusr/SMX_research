@@ -1,19 +1,19 @@
-Shap;Permutation;LRC_perturbation
-K ka;Rb ka + Br kb;K kb + Ca ka
-Rb ka + Br kb;K ka;Rb ka + Br kb
-Rh ka Compton;K kb + Ca ka;K ka
-Cl;Cl;Rh ka Rayleigh
-K kb + Ca ka;Rh ka Compton;Cl
-Rh ka Rayleigh;Rh kb Compton;Rh ka Compton
-Rh kb Compton;Br ka;Zn
-S;Fe;Rh kb Compton
-Zn;Rh ka Rayleigh;Fe
-background3;background2;background3
-Cu;background1;Mn
-background2;background3;S
-Fe;Cu;Rh kb Rayleigh
-Rh kb Rayleigh;Mn;background1
-background1;Rh kb Rayleigh;Cu
-Br ka;Zn;Br ka
-Mn;S;background2
-;;
+Shap;Permutation;LRC_perturbation;LRC_covariance
+K ka;K ka;K ka;Rh ka Compton
+Rb ka + Br kb;Rb ka + Br kb;K kb + Ca ka;Rh kb Compton
+Rh ka Compton;K kb + Ca ka;Rb ka + Br kb;Rb ka + Br kb
+Cl;Rh ka Compton;S;Rh ka Rayleigh
+K kb + Ca ka;Cl;Cl;K ka
+Rh kb Compton;Rh ka Rayleigh;Rh ka Compton;background3
+Rh ka Rayleigh;background3;Zn;background2
+Zn;Br ka;Rh kb Compton;Cl
+background3;Cu;Rh ka Rayleigh;Rh kb Rayleigh
+Br ka;Zn;Fe;Br ka
+Fe;Rh kb Compton;Mn;K kb + Ca ka
+Cu;Fe;background3;Fe
+background1;S;Cu;
+S;background1;Br ka;
+background2;background2;background1;
+Rh kb Rayleigh;Rh kb Rayleigh;Rh kb Rayleigh;
+Mn;Mn;background2;
+;;;

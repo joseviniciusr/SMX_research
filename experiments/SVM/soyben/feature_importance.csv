@@ -1,28 +1,28 @@
-SVM_pvector;Shap;Permutation;LRC_perturbation
-Fe ka;Fe ka;Fe ka;Fe ka
-Zn ka;Zn ka;Compton ka;Compton ka
-Fe kb;Compton ka;Zn ka;Rayleigh ka
-Mn;K;Fe kb;K
-Compton ka;Rayleigh ka;Rayleigh ka;Zn ka
-K;Fe kb;K;Fe kb
-Ca ka;background3;Ca ka;Ca ka
-Rayleigh ka;Compton kb;Sr;Compton kb
-Rb;Ca ka;Mn;Mn
-background2;Sr;Compton kb;Sr
-Zn kb;Rb;background3;Zr
-Rh L + Ar;Cu;Rb;background3
-Sr;Al;background2;Rb
-Ca kb;background2;Zr;Rayleigh kb
-S;Zr;Ca kb;background2
-Cu;Zn kb;Rh L + Ar;Zn kb
-Compton kb;Ca kb;S;S
-background3;Mn;Rayleigh kb;Al
-Ti ka;background1;Zn kb;Si
-Ni;Rh L + Ar;Cu;Ca kb
-;Rayleigh kb;Ti ka;Cu
-Zr;;P;P
-background1;S;background1;Rh L + Ar
-P;Si;Ni;Ti ka
-Al;P;Al;background1
-Rayleigh kb;Ti ka;;Ni
-Si;Ni;Si;
+Shap;LRC_perturbation;LRC_covariance
+Fe ka;Fe ka;Compton ka
+Zn ka;Compton ka;background3
+Compton ka;Rayleigh ka;Compton kb
+K;K;Fe ka
+Rayleigh ka;Zn ka;Rayleigh ka
+Fe kb;Fe kb;
+background3;Ca ka;
+Compton kb;Compton kb;
+Ca ka;Mn;
+Sr;Sr;
+Rb;Zr;
+Cu;background3;
+Al;Rb;
+background2;Rayleigh kb;
+Zr;background2;
+Zn kb;Zn kb;
+Ca kb;S;
+Mn;Al;
+background1;Si;
+Rh L + Ar;Ca kb;
+Rayleigh kb;Cu;
+;P;
+S;Rh L + Ar;
+Si;Ti ka;
+P;background1;
+Ti ka;Ni;
+Ni;;

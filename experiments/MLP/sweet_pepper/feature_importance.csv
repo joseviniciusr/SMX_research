@@ -1,23 +1,23 @@
 Shap;Permutation;LRC_perturbation
 K ka;K ka;K ka
-K kb + Ca ka;Rh ka Compton;Rb ka + Br kb
-Rb ka + Br kb;K kb + Ca ka;Rh ka Rayleigh
-Rh ka Compton;Rb ka + Br kb;K kb + Ca ka
-Rh ka Rayleigh;Cl;S
-Cl;Rh kb Compton;Fe ka
-Fe ka;Fe ka;Cl
-Rh kb Compton;Rh ka Rayleigh;Rh kb Rayleigh
-Br ka;Rb kb;Br ka
-Cu;background3;Rb kb
-background2;Sr ka;Zn
-Sr ka;Rh kb Rayleigh;background3
-Ca kb;Br ka;background2
-background3;background2;Ca kb
-Rb kb;Zn;Mn
-background1;S;Sr ka
-Rh kb Rayleigh;Mn;Rh kb Compton
-Zn;Ca kb;Cu
-Mn;Cu;Fe kb
-S;Fe kb;background1
-Fe kb;background1;Rh ka Compton
+Rh ka Compton;Rh ka Compton;Rb ka + Br kb
+Rb ka + Br kb;Rb ka + Br kb;Rh ka Rayleigh
+K kb + Ca ka;K kb + Ca ka;Fe ka
+Rh ka Rayleigh;Rh ka Rayleigh;Br ka
+Rh kb Compton;Rh kb Compton;Rh kb Rayleigh
+background3;Cl;Zn
+Cl;Rh kb Rayleigh;S
+Fe ka;Rb kb;Rb kb
+background2;background3;Rh kb Compton
+Br ka;Fe ka;Cl
+Rb kb;Sr ka;K kb + Ca ka
+background1;Zn;background2
+Sr ka;background2;Mn
+Rh kb Rayleigh;Br ka;Ca kb
+Ca kb;Ca kb;Sr ka
+S;Cu;background3
+Fe kb;S;Cu
+Mn;background1;Rh ka Compton
+Cu;Mn;Fe kb
+Zn;Fe kb;background1
 ;;

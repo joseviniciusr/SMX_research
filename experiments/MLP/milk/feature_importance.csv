@@ -1,12 +1,12 @@
-Shap;Permutation;LRC_perturbation
-Ag Lb;Ag ka;Ag La
-Ag La;Ag La;Ag Lb
-Ag ka;Ag Lb;Ag ka
-Zn;Zn;Ag compton
-Ag compton;Ag compton;Ca
-Bremsstrahlung;Cu;Zn
-Cu;Bremsstrahlung;Fe
-background;Ca;Bremsstrahlung
-Fe;background;Cu
-Ca;Fe;background
-;;
+Shap;Permutation;LRC_perturbation;LRC_covariance
+Ag Lb;Ag ka;Ag La;Ag La
+Ag La;Ag La;Ag Lb;Ag Lb
+Ag ka;Ag Lb;Ag ka;Ag ka
+Zn;Ag compton;Zn;Bremsstrahlung
+Ag compton;Zn;Ag compton;Ag compton
+Bremsstrahlung;Bremsstrahlung;Ca;Fe
+Cu;Cu;Fe;Ca
+background;background;Bremsstrahlung;background
+Fe;Fe;Cu;Zn
+Ca;Ca;background;Cu
+;;;
