@@ -1,17 +1,17 @@
-VIP_Score;Reg_Coefficient;Shap;Permutation;LRC_perturbation;LRC_covariance
-Fe ka;Ti ka;Ti ka;Ti ka;Ti ka;Fe ka
-Ca ka;Ti kb;Ca ka;Ca ka;Ca ka;Ca ka
-Ti ka;Ag ka scattering;Cu ka;Ti kb;Cu ka;Fe kb
-Cu ka;Ca ka;Fe ka;Cu ka;Ti kb;Ti ka
-Fe kb;Cu ka;Ti kb;Fe ka;Ca kb;Ca kb
-Ca kb;Ca kb;Ag ka scattering;Ca kb;Fe ka;Cu ka
-Ti kb;background3;Ca kb;Ag ka scattering;Ag ka scattering;Ti kb
-Ag ka scattering;Cu kb;Fe kb;Fe kb;Cu kb;Cu kb
-Cu kb;background1;Ar ka + Ag L;Cu kb;Fe kb;Ag ka scattering
-background3;Ar ka + Ag L;background1;background3;Zn ka;background3
-Zn ka;Zn ka;background3;Zn ka;background1;Zn ka
-background1;Fe ka;;background1;Ar ka + Ag L;background1
-Ar ka + Ag L;;background2;Ar ka + Ag L;background3;Ar ka + Ag L
-;Zn kb;Zn ka;;background2;Zn kb
-Zn kb;Fe kb;Zn kb;Zn kb;Zn kb;background2
-background2;background2;Cu kb;background2;;
+VIP_Score;Reg_Coefficient;Shap;Permutation;LRC_perturbation
+Fe ka;Ti ka;Ti ka;Ti ka;Ti ka
+Ca ka;Ti kb;Ca ka;Ca ka;Ca ka
+Ti ka;Ag ka scattering;Cu ka;Ti kb;Cu ka
+Cu ka;Ca ka;Fe ka;Cu ka;Ti kb
+Fe kb;Cu ka;Ti kb;Fe ka;Ca kb
+Ca kb;Ca kb;Ag ka scattering;Ca kb;Fe ka
+Ti kb;background3;Ca kb;Ag ka scattering;Ag ka scattering
+Ag ka scattering;Cu kb;Fe kb;Fe kb;Cu kb
+Cu kb;background1;Ar ka + Ag L;Cu kb;Fe kb
+background3;Ar ka + Ag L;background1;background3;Zn ka
+Zn ka;Zn ka;background3;Zn ka;background1
+background1;Fe ka;;background1;Ar ka + Ag L
+Ar ka + Ag L;;background2;Ar ka + Ag L;background3
+;Zn kb;Zn ka;;background2
+Zn kb;Fe kb;Zn kb;Zn kb;Zn kb
+background2;background2;Cu kb;background2;

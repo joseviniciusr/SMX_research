@@ -1,0 +1,25 @@
+Shap;Permutation;LRC_perturbation
+Cl;Cl;Cl
+Mo compton scattering;Mo compton scattering;K
+Mo rayleigh scattering;Mo rayleigh scattering;Ca ka
+Ca ka;Si;Mo rayleigh scattering
+Si;Ca ka;Zn ka
+Zn kb;Zn ka;Mo compton scattering
+background 4;Fe ka;background 1
+Ni;Cu;Si
+background 1;Ni;Zn kb
+Cu;background 6;Pb Lb
+background 6;background 1;Ni
+Fe ka;Ga;Cu
+Ti;Zn kb;Ga
+Zn ka;Fe kb;Fe ka
+background 3;Pb Lb;background 4
+Fe kb;Pb La;Ti
+background 5;background 3;background 3
+Ca kb;background 2;background 2
+Ga;background 5;background 6
+background 2;background 4;background 5
+Pb La;Ca kb;Fe kb
+Pb Lb;Ti;Ca kb
+;;Pb La
+;;

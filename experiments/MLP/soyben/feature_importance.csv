@@ -1,28 +1,28 @@
 Shap;Permutation;LRC_perturbation
 Fe ka;Fe ka;Fe ka
-Compton ka;Rayleigh ka;Rayleigh ka
-K;Compton ka;Ca ka
-Zn ka;Fe kb;Sr
-Compton kb;K;Zn ka
-Sr;Ca ka;K
-Ca ka;Sr;Mn
-Rayleigh ka;Compton kb;Rayleigh kb
-background2;Mn;Fe kb
-background3;Zn ka;Compton kb
-Cu;Zr;background2
-Fe kb;Rayleigh kb;Si
-Ti ka;background3;Zr
-Rh L + Ar;background2;S
-Rayleigh kb;Cu;Compton ka
-Al;Rb;background3
-S;Ca kb;Al
-background1;Zn kb;Cu
-Rb;;Rh L + Ar
-Mn;P;P
-Zn kb;Rh L + Ar;Ca kb
-P;Ti ka;Rb
-Zr;background1;Zn kb
-Ni;S;Ti ka
-;Si;background1
-Ca kb;Al;Ni
-Si;Ni;
+Compton ka;Compton ka;Rayleigh ka
+K;Rayleigh ka;Zn ka
+Zn ka;Ca ka;Ca ka
+Compton kb;Compton kb;S
+Sr;K;K
+Ca ka;background3;Mn
+Rayleigh ka;Rayleigh kb;Compton ka
+background2;Sr;Fe kb
+background3;Zn ka;Sr
+Cu;background2;Compton kb
+Fe kb;Zr;Si
+Ti ka;Rb;Rayleigh kb
+Rh L + Ar;Cu;Zr
+Rayleigh kb;Al;Al
+Al;Rh L + Ar;background2
+S;P;Rh L + Ar
+background1;Ca kb;Zn kb
+Rb;Ti ka;Cu
+Mn;Mn;Ti ka
+Zn kb;Fe kb;Rb
+P;Zn kb;Ca kb
+Zr;S;background1
+Ni;Ni;background3
+;Si;P
+Si;background1;Ni
+Ca kb;;

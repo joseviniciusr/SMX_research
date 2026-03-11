@@ -88,6 +88,23 @@ def shap_per_zone(shap_csv_path, spectral_cuts):
     return shap_unique_df
 
 
+def permutation_per_zone(permutation_csv_path, spectral_cuts):
+    """Load permutation CSV and return a zone-deduplicated DataFrame."""
+    perm_df = pd.read_csv(permutation_csv_path, sep=';')
+
+    perm_df['Zone'] = perm_df['energy'].map(
+        _map_energy_to_zone(perm_df['energy'], spectral_cuts)
+    )
+
+    perm_unique_df = perm_df.sort_values(
+        by='Permutation_importance', ascending=False
+    ).reset_index(drop=True)
+    perm_unique_df = perm_unique_df.drop_duplicates(
+        subset=['Zone'], keep='first'
+    ).reset_index(drop=True)
+    return perm_unique_df
+
+
 def svm_pvector_per_zone(svm_model, X_columns, spectral_cuts):
     """Compute SVM P-vector importance and return a zone-deduplicated DataFrame.
 

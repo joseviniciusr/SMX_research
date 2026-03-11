@@ -10,7 +10,7 @@
 
   "training_aim": "classification",
   "random_seeds": [0, 1, 2, 3],
-  "seed": 42,
+  "seed": 1,
   "test_size": 0.30,
 
   "spectral_cuts": [

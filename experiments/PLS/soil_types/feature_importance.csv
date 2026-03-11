@@ -1,23 +1,23 @@
-VIP_Score;Reg_Coefficient;Shap;Permutation;LRC_perturbation;LRC_covariance
-Fe ka;Fe ka;Fe ka;Fe ka;Fe ka;Fe ka
-Fe kb;Ti ka;Ca ka;Ca ka;Ca ka;Fe kb
-Ti ka;Ca ka;Ti ka;Ti ka;Ti ka;Mn
-Ca ka;Fe kb;Fe kb;Fe kb;Fe kb;sum Fe
-Mn;Mn;Mn;Mn;Mn;Ca ka
-sum Fe;Al;Al;Al;Al;Cr
-Ti kb;Rh L + Ar;Ca kb;Ti kb;Ti kb;Si
-Al;Ca kb;Si;Ca kb;Si;Ti kb
-Si;Ti kb;background2;sum Fe;Rh L + Ar;Rh L + Ar
-Cr;K;S;Rh L + Ar;sum Fe;Ti ka
-Rh L + Ar;Cu;;K;Ca kb;Cu
-Cu;background1;P;Cu;Cu;Al
-Ca kb;sum Fe;Rh L + Ar;Cr;K;Ca kb
-K;Cr;K;Si;background1;background1
-background1;P;Ti kb;P;Fe ka + Ti ka;background2
-P;Zn;Fe ka + Ti ka;background1;P;K
-Fe ka + Ti ka;Ni;Cr;Fe ka + Ti ka;Zn;Fe ka + Ti ka
-Zn;background2;Ni;Zn;Ni;P
-Ni;Fe ka + Ti ka;Cu;Ni;background2;Zn
-background2;S;Zn;background2;Cr;Ni
-S;Si;background1;S;S;S
-;;sum Fe;;;
+VIP_Score;Reg_Coefficient;Shap;Permutation;LRC_perturbation
+Fe ka;Fe ka;Fe ka;Fe ka;Fe ka
+Fe kb;Ti ka;Ca ka;Ca ka;Ca ka
+Ti ka;Ca ka;Ti ka;Ti ka;Ti ka
+Ca ka;Fe kb;Fe kb;Fe kb;Fe kb
+Mn;Mn;Mn;Mn;Mn
+sum Fe;Al;Al;Al;Al
+Ti kb;Rh L + Ar;Ca kb;Ti kb;Ti kb
+Al;Ca kb;Si;Ca kb;Si
+Si;Ti kb;background2;sum Fe;Rh L + Ar
+Cr;K;S;Rh L + Ar;sum Fe
+Rh L + Ar;Cu;;K;Ca kb
+Cu;background1;P;Cu;Cu
+Ca kb;sum Fe;Rh L + Ar;Cr;K
+K;Cr;K;Si;background1
+background1;P;Ti kb;P;Fe ka + Ti ka
+P;Zn;Fe ka + Ti ka;background1;P
+Fe ka + Ti ka;Ni;Cr;Fe ka + Ti ka;Zn
+Zn;background2;Ni;Zn;Ni
+Ni;Fe ka + Ti ka;Cu;Ni;background2
+background2;S;Zn;background2;Cr
+S;Si;background1;S;S
+;;sum Fe;;

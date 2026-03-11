@@ -19,10 +19,10 @@ Ni;background3;background3;Zn kb;Zn kb
 background3;S;Zn kb;Rayleigh kb;Al
 S;Ti ka;Rh L + Ar;Cu;Rb
 Ti ka;Fe kb;Zr;Ti ka;Fe kb
-;Zr;Ti ka;S;P
+;Zr;Al;S;P
 Zr;;Si;P;Rh L + Ar
-background1;background1;Al;Ni;background1
-Rayleigh kb;P;Ni;background1;background3
+background1;background1;Ti ka;Ni;background1
+Rayleigh kb;P;;background1;background3
 P;Rayleigh kb;background1;;Ti ka
-Al;Al;;Al;Ni
+Al;Al;Ni;Al;Ni
 Si;Si;Rayleigh kb;Si;

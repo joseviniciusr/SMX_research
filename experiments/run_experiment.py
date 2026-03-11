@@ -24,10 +24,11 @@ sys.path.insert(0, str(WORKSPACE_ROOT))
 
 import preprocessings as prepr
 from modeling import pls_optimized, svm_optimized, mlp_optimized
-import explaining as exp
+import smx
 import debugging as dbg
 from config import load_dataset_config, list_available_datasets
 from synthetic import generate_synthetic_spectral_data
+
 
 # ── Model dispatch table ─────────────────────────────────────────────────────
 MODEL_CONFIG = {
@@ -279,12 +280,13 @@ def extract_y_continuous(model_name, result):
 
 # ── LRC Pipelines ────────────────────────────────────────────────────────────
 
-def _run_lrc_pipeline(config, metric_type, zone_scores_df, y_pred, predicates_quantiles,
+def _run_lrc_pipeline(config, metric_type, zone_scores_df, y_pred, predicates_df,
                       pca_info_dict, Xcalclass, Xcalclass_prep, spectral_cuts,
                       model=None, model_name=None):
     """Run covariance or perturbation LRC pipeline across seeds.
 
-    Returns: (lrc_summed_df, lrc_summed_unique_df, lrc_natural_df)
+    Returns: (lrc_summed_df, lrc_summed_unique_df, lrc_natural_df,
+              spectral_zones_original, pca_info_dict_original)
     """
     random_seeds = config.get('random_seeds', [0, 1, 2, 3])
     training_samples = len(zone_scores_df)
@@ -297,18 +299,16 @@ def _run_lrc_pipeline(config, metric_type, zone_scores_df, y_pred, predicates_qu
         print(f"Processing seed ({metric_type}): {seed}")
         print(f"{'='*70}\n")
 
-        bags_result_seed = exp.bagging_predicates(
-            zone_sums_df=zone_scores_df,
-            y_predicted_numeric=y_pred_series,
-            predicates_df=predicates_quantiles[0],
+        bagger = smx.PredicateBagger(
             n_bags=10,
             n_samples_per_bag=int(training_samples * 0.8),
             min_samples_per_predicate=int(training_samples * 0.2),
             replace=False,
             sample_bagging=True,
             predicate_bagging=False,
-            random_seed=seed
+            random_seed=seed,
         )
+        bags_result_seed = bagger.run(zone_scores_df, y_pred_series, predicates_df)
 
         for bag_name, pred_dict in bags_result_seed.items():
             for pred_rule, df_info in pred_dict.items():
@@ -317,28 +317,25 @@ def _run_lrc_pipeline(config, metric_type, zone_scores_df, y_pred, predicates_qu
                 )
 
         if metric_type == 'covariance':
-            metric_results = exp.calculate_predicate_metrics(
-                bags_result=bags_result_seed,
-                metric='covariance',
-                threshold=0.01,
-                n_neighbors=5
+            metric_obj = smx.CovarianceMetric(
+                metric='covariance', threshold=0.01, n_neighbors=5
             )
+            metric_results = metric_obj.compute(bags_result_seed)
         else:  # perturbation
             mc = MODEL_CONFIG[model_name]
-            metric_results = exp.calculate_predicate_perturbation(
+            metric_obj = smx.PerturbationMetric(
                 estimator=model,
                 Xcalclass_prep=Xcalclass_prep,
-                folds_struct=bags_result_seed,
-                predicates_df=predicates_quantiles[0],
+                predicates_df=predicates_df,
                 spectral_cuts=spectral_cuts,
                 perturbation_mode='median',
                 stats_source='full',
-                aim=mc['perturbation_aim'],
                 metric=mc['perturbation_metric'],
                 verbose=True,
                 normalize_by_zone_size=True,
-                zone_size_exponent=1.0,  
+                zone_size_exponent=1.0,
             )
+            metric_results = metric_obj.compute(bags_result_seed)
 
         all_results[seed] = {
             'bags_result': bags_result_seed,
@@ -352,14 +349,16 @@ def _run_lrc_pipeline(config, metric_type, zone_scores_df, y_pred, predicates_qu
         print(f"\n{'='*70}")
         print(f"Processing graph ({metric_type}) - Seed: {seed}")
         print(f"{'='*70}\n")
-        DG = exp.build_predicate_graph(
-            bags_result=all_results[seed]['bags_result'],
-            predicate_ranking_dict=all_results[seed]['metric_results'],
-            metric_column=metric_column,
+        builder = smx.PredicateGraphBuilder(
             random_state=seed,
             show_details=True,
             var_exp=True,
-            pca_info_dict=pca_info_dict
+            pca_info_dict=pca_info_dict,
+        )
+        DG = builder.build(
+            bags_result=all_results[seed]['bags_result'],
+            predicate_ranking_dict=all_results[seed]['metric_results'],
+            metric_column=metric_column,
         )
         graphs_by_seed[seed] = DG
 
@@ -372,7 +371,7 @@ def _run_lrc_pipeline(config, metric_type, zone_scores_df, y_pred, predicates_qu
         if len(predicate_nodes) == 0:
             print(f"  WARNING: seed {seed} produced an empty graph ({metric_type}), skipping.")
             continue
-        lrc_df_seed = exp.calculate_lrc_single_graph(DG, predicates_quantiles[0])
+        lrc_df_seed = smx.compute_lrc(DG, predicates_df)
         lrc_df_seed['Seed'] = seed
         lrc_by_seed[seed] = lrc_df_seed
 
@@ -384,23 +383,24 @@ def _run_lrc_pipeline(config, metric_type, zone_scores_df, y_pred, predicates_qu
 
     # Phase 4: aggregate across seeds
     valid_seeds = list(lrc_by_seed.keys())
-    lrc_summed_df, lrc_summed_unique_df = exp.aggregate_lrc_across_seeds(
+    lrc_summed_df, lrc_summed_unique_df = smx.aggregate_lrc_across_seeds(
         lrc_by_seed, valid_seeds
     )
     print(lrc_summed_unique_df)
 
     # Phase 5: map to natural scale
-    spectral_zones_original = exp.extract_spectral_zones(Xcalclass, spectral_cuts)
-    zones_original = exp.aggregate_spectral_zones_pca(spectral_zones_original)
+    spectral_zones_original = smx.extract_spectral_zones(Xcalclass, spectral_cuts)
+    agg_original = smx.ZoneAggregator(method='pca')
+    zone_scores_natural = agg_original.fit_transform(spectral_zones_original)
 
-    lrc_natural_df = exp.map_thresholds_to_natural(
+    lrc_natural_df = smx.map_thresholds_to_natural(
         lrc_df=lrc_summed_df,
         zone_sums_preprocessed=zone_scores_df,
-        zone_sums_natural=zones_original[0]
+        zone_sums_natural=zone_scores_natural,
     )
     print(lrc_natural_df)
 
-    pca_info_dict_original = zones_original[1]
+    pca_info_dict_original = agg_original.pca_info_
 
     return lrc_summed_df, lrc_summed_unique_df, lrc_natural_df, spectral_zones_original, pca_info_dict_original
 
@@ -448,7 +448,7 @@ def save_visualization_data(lrc_natural_df, spectral_zones_original,
             for _, lrc_row in zone_rows.iterrows():
                 thresh_val = float(lrc_row['Threshold_Natural'])
                 node_natural = lrc_row.get('Node_Natural', lrc_row.get('Node', ''))
-                thresh_spectrum = exp.reconstruct_threshold_to_spectrum(
+                thresh_spectrum = smx.reconstruct_threshold_to_spectrum(
                     threshold_value=thresh_val,
                     zone_name=zone_name,
                     pca_info_dict=pca_info_dict_original,
@@ -502,7 +502,7 @@ def build_and_export_figure(lrc_natural_df, spectral_zones_original,
         node_natural = row.get('Node_Natural', row.get('Node', ''))
 
         # Reconstruct threshold spectrum
-        threshold_spectrum = exp.reconstruct_threshold_to_spectrum(
+        threshold_spectrum = smx.reconstruct_threshold_to_spectrum(
             threshold_value=threshold_score,
             zone_name=zone_name,
             pca_info_dict=pca_info_dict_original
@@ -654,122 +654,10 @@ def run_visualization_only(dataset, model_name, method):
     print(f"\nDone – figures saved under {output_dir}")
 
 
-# ── Debugging helpers ────────────────────────────────────────────────────────
-
-def run_debugging(model_name, result, config, Xcalclass_prep, spectral_cuts, output_dir):
-    """Run model-specific importance methods + SHAP zone + permutation importance.
-
-    Returns dict with zone-deduplicated DataFrames for each method.
-    """
-    mc = MODEL_CONFIG[model_name]
-    model = mc['model_extractor'](result)
-    results = {}
-
-    # Model-specific importance
-    if 'vip' in mc['importance_methods']:
-        vip_scores_mat = result[4]  # PLS vip
-        results['vip'] = dbg.vip_scores_per_zone(vip_scores_mat, spectral_cuts)
-        print("VIP scores per zone:")
-        print(results['vip'])
-
-    if 'reg_coef' in mc['importance_methods']:
-        results['reg_coef'] = dbg.regression_coefficients_per_zone(model, spectral_cuts)
-        print("Regression coefficients per zone:")
-        print(results['reg_coef'])
-
-    if 'pvector' in mc['importance_methods']:
-        results['pvector'] = dbg.svm_pvector_per_zone(
-            model, Xcalclass_prep.columns, spectral_cuts
-        )
-        print("SVM P-vector per zone:")
-        print(results['pvector'])
-
-    # SHAP from pre-computed CSV
-    dataset_name = config['name']
-    shap_csv = output_dir / f'shap_{dataset_name}.csv'
-    if shap_csv.exists():
-        results['shap'] = dbg.shap_per_zone(str(shap_csv), spectral_cuts)
-    else:
-        warnings.warn(f"SHAP CSV not found at {shap_csv}, skipping SHAP.")
-
-    # Permutation importance
-    scoring_fn = mc['permutation_scoring_fn']
-    if scoring_fn is not None:
-        scoring_fn = scoring_fn(model)
-
-    perm_unique, perm_full = exp.permutation_importance_per_zone(
-        estimator=model,
-        X=Xcalclass_prep,
-        spectral_cuts=spectral_cuts,
-        n_repeats=10,
-        random_state=42,
-        scoring_fn=scoring_fn,
-    )
-    results['permutation'] = perm_unique
-    print("Permutation importance per zone:")
-    print(perm_unique)
-
-    # exporting the performance metrics of the models
-    dataset_name = config['name']
-    metrics_csv = output_dir / 'performance_metrics.csv'
-    dbg.export_performance_metrics(result[0], str(metrics_csv))
-    results['performance_metrics'] = result[0]
-
-    return results
-
-
-def build_feature_importance_table(model_name, debugging_results,
-                                   lrc_cov_unique=None, lrc_pert_unique=None):
-    """Assemble feature_importance DataFrame with model-appropriate columns."""
-    mc = MODEL_CONFIG[model_name]
-
-    # Collect all zone lists
-    zone_lists = {}
-
-    if lrc_cov_unique is not None:
-        zone_lists['LRC_covariance'] = list(lrc_cov_unique['Zone'])
-    if lrc_pert_unique is not None:
-        zone_lists['LRC_perturbation'] = list(lrc_pert_unique['Zone'])
-
-    if 'permutation' in debugging_results:
-        zone_lists['Permutation'] = list(debugging_results['permutation']['Zone'])
-
-    if 'vip' in debugging_results:
-        zone_lists['VIP_Score'] = list(debugging_results['vip']['Zone'])
-    if 'reg_coef' in debugging_results:
-        zone_lists['Reg_Coefficient'] = list(debugging_results['reg_coef']['Zone'])
-    if 'pvector' in debugging_results:
-        zone_lists['SVM_pvector'] = list(debugging_results['pvector']['Zone'])
-    if 'shap' in debugging_results:
-        zone_lists['Shap'] = list(debugging_results['shap']['Zone'])
-
-    if not zone_lists:
-        return pd.DataFrame()
-
-    max_len = max(len(v) for v in zone_lists.values())
-
-    def pad(lst):
-        return lst + [None] * (max_len - len(lst))
-
-    # Canonical column order per model type (model-specific first, then common)
-    COLUMN_ORDER = {
-        'pls': ['VIP_Score', 'Reg_Coefficient', 'Shap', 'Permutation',
-                 'LRC_perturbation', 'LRC_covariance'],
-        'svm': ['SVM_pvector', 'Shap', 'Permutation',
-                 'LRC_perturbation', 'LRC_covariance'],
-        'mlp': ['Shap', 'Permutation', 'LRC_perturbation', 'LRC_covariance'],
-    }
-    ordered_cols = [c for c in COLUMN_ORDER.get(model_name, [])
-                    if c in zone_lists]
-
-    fi_data = {k: pad(v) for k, v in zone_lists.items()}
-    df = pd.DataFrame(fi_data)
-    return df[ordered_cols] if ordered_cols else df
-
-
 # ── Main experiment orchestrator ─────────────────────────────────────────────
 
-def run_single_experiment(dataset, model_name, method, debugging, visualization=False):
+def run_single_experiment(dataset, model_name, method, visualization=False,
+                         run_shap_flag=False, run_permutation_flag=False):
     """Orchestrate a single (dataset, model) experiment."""
     print(f"\n{'#'*70}")
     print(f"# Experiment: dataset={dataset}, model={model_name}, method={method}")
@@ -795,6 +683,17 @@ def run_single_experiment(dataset, model_name, method, debugging, visualization=
         print(f"WARNING: model '{model_name}' not compatible with dataset '{dataset}'. Skipping.")
         return
 
+    # 2a. Run auxiliary techniques first (they train their own model copy)
+    if run_shap_flag:
+        print("\n--- Running SHAP (auxiliary technique) ---")
+        from run_shap import run_shap
+        run_shap(dataset, model_name)
+
+    if run_permutation_flag:
+        print("\n--- Running Permutation Importance (auxiliary technique) ---")
+        from run_permutation import run_permutation
+        run_permutation(dataset, model_name)
+
     # 3. Load data
     print("Loading data...")
     Xcalclass, Xpredclass, ycalclass, ypredclass = load_data(config)
@@ -815,28 +714,30 @@ def run_single_experiment(dataset, model_name, method, debugging, visualization=
 
     # 7. PCA aggregation
     print("PCA aggregation...")
-    spectral_zones_class = exp.extract_spectral_zones(Xcalclass_prep, spectral_cuts)
-    zone_scores_df, pca_info_dict = exp.aggregate_spectral_zones_pca(spectral_zones_class)
+    spectral_zones_class = smx.extract_spectral_zones(Xcalclass_prep, spectral_cuts)
+    aggregator = smx.ZoneAggregator(method='pca')
+    zone_scores_df = aggregator.fit_transform(spectral_zones_class)
+    pca_info_dict = aggregator.pca_info_
     print(f"  Zone scores shape: {zone_scores_df.shape}")
 
     # 8. Predicates
-    predicates_quantiles = exp.predicates_by_quantiles(zone_scores_df, [0.2, 0.4, 0.6, 0.8])
+    pred_gen = smx.PredicateGenerator(quantiles=[0.2, 0.4, 0.6, 0.8])
+    pred_gen.fit(zone_scores_df)
+    predicates_df = pred_gen.predicates_df_
 
     # 9. Output directory
     output_dir = SCRIPT_DIR / model_name.upper() / dataset
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # 10. Run LRC pipelines
-    lrc_cov_unique = None
-    lrc_pert_unique = None
     lrc_cov_natural = None
     lrc_pert_natural = None
 
     if method in ('covariance', 'all'):
         print("\n--- Covariance Pipeline ---")
-        _, lrc_cov_unique, lrc_cov_natural, cov_zones_orig, cov_pca_orig = _run_lrc_pipeline(
+        _, _, lrc_cov_natural, cov_zones_orig, cov_pca_orig = _run_lrc_pipeline(
             config, 'covariance', zone_scores_df, y_pred_cont,
-            predicates_quantiles, pca_info_dict,
+            predicates_df, pca_info_dict,
             Xcalclass, Xcalclass_prep, spectral_cuts,
             model=model, model_name=model_name
         )
@@ -852,9 +753,9 @@ def run_single_experiment(dataset, model_name, method, debugging, visualization=
 
     if method in ('perturbation', 'all'):
         print("\n--- Perturbation Pipeline ---")
-        _, lrc_pert_unique, lrc_pert_natural, pert_zones_orig, pert_pca_orig = _run_lrc_pipeline(
+        _, _, lrc_pert_natural, pert_zones_orig, pert_pca_orig = _run_lrc_pipeline(
             config, 'perturbation', zone_scores_df, y_pred_cont,
-            predicates_quantiles, pca_info_dict,
+            predicates_df, pca_info_dict,
             Xcalclass, Xcalclass_prep, spectral_cuts,
             model=model, model_name=model_name
         )
@@ -868,30 +769,50 @@ def run_single_experiment(dataset, model_name, method, debugging, visualization=
                 ycalclass, output_dir, prefix='pert'
             )
 
-    # 11. Debugging extras
-    debugging_results = {}
-    if debugging:
-        print("\n--- Debugging ---")
-        debugging_results = run_debugging(
-            model_name, result, config, Xcalclass_prep, spectral_cuts, output_dir
-        )
+    # 11. Export model-specific importance (lightweight, always saved)
+    dataset_name = config['name']
+    print("\n--- Model-specific importance ---")
 
-    # 12. Feature importance table
-    if debugging:
-        features_importance = build_feature_importance_table(
-            model_name, debugging_results,
-            lrc_cov_unique=lrc_cov_unique,
-            lrc_pert_unique=lrc_pert_unique
-        )
-        if not features_importance.empty:
-            features_importance.to_csv(
-                output_dir / 'feature_importance.csv', index=False, sep=';'
-            )
-            print("\nFeature importance table:")
-            print(features_importance)
+    if 'vip' in mc['importance_methods']:
+        vip_scores_mat = result[4]  # PLS vip
+        vip_df = pd.DataFrame({
+            'energy': vip_scores_mat.T.index,
+            'VIP_Score': vip_scores_mat.T.iloc[:, 0].values
+        })
+        vip_df.sort_values('VIP_Score', ascending=False, inplace=True)
+        vip_path = output_dir / f'vip_{dataset_name}.csv'
+        vip_df.to_csv(vip_path, index=False, sep=';')
+        print(f"  VIP scores saved to {vip_path}")
 
-            # RBO
-            dbg.rbo_rank_comparison(features_importance, output_dir / 'rbo_rank.csv')
+    if 'reg_coef' in mc['importance_methods']:
+        reg_vet = pd.DataFrame(
+            model.coef_, columns=model.feature_names_in_
+        ).T
+        reg_vet.insert(0, 'energy', reg_vet.index)
+        reg_vet = reg_vet.reset_index(drop=True)
+        reg_vet.columns = ['energy', 'Reg_coef']
+        reg_vet['Abs_Reg_coef'] = reg_vet['Reg_coef'].abs()
+        reg_vet.sort_values('Abs_Reg_coef', ascending=False, inplace=True)
+        reg_path = output_dir / f'reg_coef_{dataset_name}.csv'
+        reg_vet.to_csv(reg_path, index=False, sep=';')
+        print(f"  Regression coefficients saved to {reg_path}")
+
+    if 'pvector' in mc['importance_methods']:
+        X_sv = model.support_vectors_
+        alpha_dual = model.dual_coef_.ravel()
+        importance = np.abs(X_sv.T @ alpha_dual)
+        pvector_df = pd.DataFrame({
+            'energy': Xcalclass_prep.columns,
+            'Pvector': importance
+        })
+        pvector_df.sort_values('Pvector', ascending=False, inplace=True)
+        pvector_path = output_dir / f'pvector_{dataset_name}.csv'
+        pvector_df.to_csv(pvector_path, index=False, sep=';')
+        print(f"  SVM P-vector saved to {pvector_path}")
+
+    # 12. Export performance metrics
+    metrics_csv = output_dir / 'performance_metrics.csv'
+    dbg.export_performance_metrics(result[0], str(metrics_csv))
 
     # 13. Save LRC artifacts
     if lrc_cov_natural is not None:
@@ -914,8 +835,10 @@ def main():
     parser.add_argument('--method', default='all',
                         choices=['covariance', 'perturbation', 'all'],
                         help='LRC method(s) to run')
-    parser.add_argument('--debugging', action='store_true',
-                        help='Enable non-core extras (permutation, model importance, SHAP, RBO)')
+    parser.add_argument('--shap', action='store_true',
+                        help='Run SHAP computation before the SMX experiment')
+    parser.add_argument('--permutation', action='store_true',
+                        help='Run permutation importance before the SMX experiment')
     parser.add_argument('--visualization', action='store_true',
                         help='Export threshold-spectrum HTML figures (one per LRC row)')
     parser.add_argument('--visualization-only', action='store_true',
@@ -933,8 +856,12 @@ def main():
                 if args.visualization_only:
                     run_visualization_only(ds, mdl, args.method)
                 else:
-                    run_single_experiment(ds, mdl, args.method, args.debugging,
-                                          visualization=args.visualization)
+                    run_single_experiment(
+                        ds, mdl, args.method,
+                        visualization=args.visualization,
+                        run_shap_flag=args.shap,
+                        run_permutation_flag=args.permutation,
+                    )
             except Exception as e:
                 print(f"\nERROR running {ds}/{mdl}: {e}")
                 import traceback
