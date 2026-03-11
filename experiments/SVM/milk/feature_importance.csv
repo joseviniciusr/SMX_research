@@ -1,12 +1,12 @@
-SVM_pvector;Shap;Permutation;LRC_perturbation;LRC_covariance
-Ag ka;Ag La;Ag ka;Ag La;Ag La
-Ag La;Ag ka;Ag La;Ag Lb;Ag Lb
-Zn;Ag Lb;Ag Lb;Ag ka;Ag ka
-Ag Lb;Ag compton;Zn;Ag compton;Bremsstrahlung
-Bremsstrahlung;Bremsstrahlung;Bremsstrahlung;Zn;Ag compton
-Fe;Zn;Ag compton;Fe;Ca
-Ag compton;Fe;Fe;Bremsstrahlung;Cu
-background;Cu;Cu;Ca;background
-Ca;Ca;Ca;background;Fe
-Cu;background;background;Cu;Zn
-;;;;
+SVM_pvector;Shap;Permutation;LRC_perturbation
+Ag ka;Ag La;Ag ka;Ag La
+Ag La;Ag ka;Ag La;Ag Lb
+Zn;Ag Lb;Ag Lb;Ag ka
+Ag Lb;Ag compton;Zn;Ag compton
+Bremsstrahlung;Bremsstrahlung;Bremsstrahlung;Zn
+Fe;Zn;Ag compton;Fe
+Ag compton;Fe;Fe;Bremsstrahlung
+background;Cu;Cu;Ca
+Ca;Ca;Ca;background
+Cu;background;background;Cu
+;;;

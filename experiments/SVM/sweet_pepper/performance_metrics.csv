@@ -1,0 +1,4 @@
+Model;Accuracy Cal;Sensitivity Cal;Specificity Cal;CM Cal;Accuracy Pred;Sensitivity Pred;Specificity Pred;CM Pred
+SVC;0.9523809523809523;1.0;0.9090909090909091;"[[10  1]
+ [ 0 10]]";0.45454545454545453;0.6;0.3333333333333333;"[[2 4]
+ [2 3]]"
