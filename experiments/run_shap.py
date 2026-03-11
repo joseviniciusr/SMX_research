@@ -13,6 +13,7 @@ import argparse
 import os
 import random
 import sys
+import time
 from pathlib import Path
 
 import numpy as np
@@ -117,6 +118,7 @@ def run_shap(dataset, model_name, new_only=False):
     output_path = output_dir / f'shap_{config["name"]}.csv'
     shap_global_importance.to_csv(output_path, index=False, sep=';')
     print(f"SHAP values saved to {output_path}")
+    return shap_global_importance
 
 
 # ── CLI ──────────────────────────────────────────────────────────────────────
@@ -138,7 +140,33 @@ def main():
     for ds in datasets:
         for mdl in models:
             try:
+                start_time = time.time()
                 run_shap(ds, mdl, new_only=args.new_only)
+                elapsed = time.time() - start_time
+
+                # Save technique metrics
+                config = load_dataset_config(ds)
+                output_dir = SCRIPT_DIR / mdl.upper() / ds
+                output_dir.mkdir(parents=True, exist_ok=True)
+                metrics_path = output_dir / 'technique_metrics.csv'
+
+                # Load or create metrics dataframe
+                if metrics_path.exists():
+                    metrics_df = pd.read_csv(metrics_path, sep=';')
+                else:
+                    metrics_df = pd.DataFrame(columns=['Technique', 'Runtime_seconds'])
+
+                # Update or add SHAP row
+                mask = metrics_df['Technique'] == 'SHAP'
+                if mask.any():
+                    metrics_df.loc[mask, 'Runtime_seconds'] = elapsed
+                else:
+                    metrics_df = pd.concat([metrics_df, pd.DataFrame(
+                        {'Technique': ['SHAP'], 'Runtime_seconds': [elapsed]}
+                    )], ignore_index=True)
+
+                metrics_df.to_csv(metrics_path, index=False, sep=';')
+                print(f"  SHAP runtime: {elapsed:.2f}s → {metrics_path}")
             except Exception as e:
                 print(f"\nERROR running SHAP for {ds}/{mdl}: {e}")
                 import traceback
