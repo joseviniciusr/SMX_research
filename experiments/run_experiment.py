@@ -869,7 +869,7 @@ def main():
     parser.add_argument('--model', required=True,
                         choices=['pls', 'mlp', 'svm', 'all'],
                         help='Model type or "all"')
-    parser.add_argument('--method', default='all',
+    parser.add_argument('--method', default='pertubation',
                         choices=['covariance', 'perturbation', 'all'],
                         help='LRC method(s) to run')
     parser.add_argument('--shap', action='store_true',
