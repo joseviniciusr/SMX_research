@@ -1,21 +1,40 @@
 """
-Post-experiment analysis: build feature_importance.csv and rbo_rank.csv from
-the individual technique output files produced by run_experiment, run_shap,
-and run_permutation.
+Post-experiment analysis for SMX research.
+
+Available analyses (select via flags):
+  --rbo            Build feature_importance.csv and rbo_rank.csv from the
+                   individual technique output files produced by run_experiment,
+                   run_shap, and run_permutation.
+  --faithfulness   Faithfulness evaluation: progressively mask top-k ranked
+                   zones and measure F1 / Accuracy degradation for each XAI
+                   method (SMX, SHAP, Permutation).
 
 Only techniques whose output files exist are included – missing techniques
 are silently skipped so you can run analysis at any stage.
 
 Usage:
-    python experiments/run_analysis.py --dataset soil --model mlp
-    python experiments/run_analysis.py --dataset all --model all --method all
+    # RBO ranking comparison (original behaviour)
+    python experiments/run_analysis.py --rbo --dataset soil --model mlp
+    python experiments/run_analysis.py --rbo --dataset all --model all
+
+    # Faithfulness evaluation (masking top-k zones, default mask=zero)
+    python experiments/run_analysis.py --faithfulness --dataset bank_notes --model mlp
+    python experiments/run_analysis.py --faithfulness --dataset soil --model pls --mask_mode median
+    python experiments/run_analysis.py --faithfulness --dataset all --model all --mask_mode zero
+
+    # Run both analyses at once
+    python experiments/run_analysis.py --rbo --faithfulness --dataset bank_notes --model mlp
 """
 
 import argparse
+import os
+import random
 import sys
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
+from sklearn.metrics import f1_score, accuracy_score
 
 # ── Path setup ───────────────────────────────────────────────────────────────
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -25,6 +44,9 @@ if str(WORKSPACE_ROOT) not in sys.path:
 
 from config import load_dataset_config, list_available_datasets
 import debugging as dbg
+from run_experiment import (
+    load_data, preprocess, train_model, MODEL_CONFIG,
+)
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
@@ -163,9 +185,9 @@ def build_feature_importance_table(model_name, output_dir, dataset_name,
 
 
 def run_analysis(dataset, model_name, method='all'):
-    """Run analysis for a single (dataset, model) combination."""
+    """Run RBO analysis for a single (dataset, model) combination."""
     print(f"\n{'#'*70}")
-    print(f"# Analysis: dataset={dataset}, model={model_name}, method={method}")
+    print(f"# RBO Analysis: dataset={dataset}, model={model_name}, method={method}")
     print(f"{'#'*70}\n")
 
     config = load_dataset_config(dataset)
@@ -199,11 +221,290 @@ def run_analysis(dataset, model_name, method='all'):
     print(f"  RBO rank saved to {rbo_path}")
 
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# Faithfulness evaluation
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def _get_zone_columns(zone_name, spectral_cuts, all_columns):
+    """Return column names that belong to a spectral zone.
+
+    Parameters
+    ----------
+    zone_name : str
+        Name of the zone (must match a name in *spectral_cuts*).
+    spectral_cuts : list of tuples
+        Each tuple is ``(zone_name, start, end)``.
+    all_columns : pd.Index
+        All column names of the spectral DataFrame.
+
+    Returns
+    -------
+    list of str
+        Column names whose numeric value falls within [start, end].
+    """
+    zone_start = zone_end = None
+    for cut in spectral_cuts:
+        name, start, end = cut[0], float(cut[1]), float(cut[2])
+        if name == zone_name:
+            zone_start, zone_end = start, end
+            break
+
+    if zone_start is None:
+        return []
+
+    col_numeric = pd.to_numeric(all_columns.astype(str), errors='coerce')
+    mask = (~np.isnan(col_numeric)) & (col_numeric >= zone_start) & (col_numeric <= zone_end)
+    return list(all_columns[mask])
+
+
+def _collect_zone_rankings(output_dir, dataset_name, spectral_cuts):
+    """Read pre-computed ranking CSVs and return a dict of zone rankings.
+
+    Returns ``{method_label: [zone_name_rank1, zone_name_rank2, ...]}``.
+    Only methods whose files exist are included.  NaN / None entries are
+    dropped so that every element is a valid zone name string.
+    """
+    rankings = {}
+
+    # SMX (LRC perturbation)
+    lrc_path = output_dir / 'lrc_pert_natural.csv'
+    if lrc_path.exists():
+        rankings['SMX'] = _zone_ranking_from_lrc(lrc_path)
+
+    # SHAP
+    shap_path = output_dir / f'shap_{dataset_name}.csv'
+    if shap_path.exists():
+        rankings['SHAP'] = _zone_ranking_from_per_energy_csv(
+            shap_path, 'Mean_Abs_SHAP', spectral_cuts,
+        )
+
+    # Permutation
+    perm_path = output_dir / f'permutation_{dataset_name}.csv'
+    if perm_path.exists():
+        rankings['Permutation'] = _zone_ranking_from_per_energy_csv(
+            perm_path, 'Permutation_importance', spectral_cuts,
+        )
+
+    # Drop NaN / None entries that may arise from unmapped energies
+    for key in rankings:
+        rankings[key] = [z for z in rankings[key] if isinstance(z, str)]
+
+    return rankings
+
+
+def _mask_zones(X, zones_to_mask, spectral_cuts, mask_mode, Xcal_prep):
+    """Return a copy of *X* with the columns of *zones_to_mask* replaced.
+
+    Parameters
+    ----------
+    X : pd.DataFrame
+        Spectral data (preprocessed) to mask.
+    zones_to_mask : list of str
+        Zone names to mask.
+    spectral_cuts : list of tuples
+        Zone boundary definitions.
+    mask_mode : str
+        ``'zero'`` — replace with 0.
+        ``'median'`` — replace with per-column median of *Xcal_prep*.
+        ``'mean'`` — replace with per-column mean of *Xcal_prep*.
+    Xcal_prep : pd.DataFrame
+        Calibration (training) data used to compute median/mean statistics.
+
+    Returns
+    -------
+    pd.DataFrame
+        Masked copy of *X*.
+    """
+    X_masked = X.copy()
+    for zone_name in zones_to_mask:
+        cols = _get_zone_columns(zone_name, spectral_cuts, X.columns)
+        if not cols:
+            continue
+        if mask_mode == 'zero':
+            X_masked[cols] = 0.0
+        elif mask_mode == 'median':
+            X_masked[cols] = Xcal_prep[cols].median().values
+        elif mask_mode == 'mean':
+            X_masked[cols] = Xcal_prep[cols].mean().values
+        else:
+            raise ValueError(f"Unknown mask_mode: '{mask_mode}'")
+    return X_masked
+
+
+def _predict_classes(model_name, model, X):
+    """Predict class labels (strings 'A'/'B') for *X*.
+
+    Handles PLS-DA (continuous → binarise at 0.5) and sklearn classifiers
+    (SVM, MLP) that return numeric 0/1.
+    """
+    if model_name == 'pls':
+        y_cont = model.predict(X).flatten()
+        y_bin = (y_cont >= 0.5).astype(int)
+    else:
+        y_bin = model.predict(X)
+        # Ensure integer array
+        y_bin = np.asarray(y_bin, dtype=int)
+    return y_bin
+
+
+def run_faithfulness(dataset, model_name, mask_mode='zero', method='perturbation'):
+    """Run faithfulness evaluation for a single (dataset, model) combination.
+
+    For every available XAI method, progressively mask top-k zones and
+    measure the degradation of F1 and Accuracy on the prediction set.
+
+    Parameters
+    ----------
+    dataset : str
+        Dataset identifier.
+    model_name : str
+        One of ``'pls'``, ``'mlp'``, ``'svm'``.
+    mask_mode : str
+        Masking strategy: ``'zero'``, ``'median'``, or ``'mean'``.
+    method : str
+        Which LRC method to include: ``'covariance'``, ``'perturbation' (default)``,
+        or ``'all'``.
+    """
+    print(f"\n{'#'*70}")
+    print(f"# Faithfulness: dataset={dataset}, model={model_name}, mask={mask_mode}")
+    print(f"{'#'*70}\n")
+
+    # ── 0. Load config & validate ────────────────────────────────────────
+    config = load_dataset_config(dataset)
+    dataset_name = config['name']
+    spectral_cuts = [tuple(sc) for sc in config['spectral_cuts']]
+    output_dir = SCRIPT_DIR / model_name.upper() / dataset
+
+    if not output_dir.exists():
+        print(f"  Output directory does not exist: {output_dir}")
+        print("  Run the experiment first.")
+        return
+
+    if model_name not in config.get('compatible_models', []):
+        print(f"  Model '{model_name}' not compatible with dataset '{dataset}'. Skipping.")
+        return
+
+    # ── 1. Collect available zone rankings ───────────────────────────────
+    rankings = _collect_zone_rankings(output_dir, dataset_name, spectral_cuts)
+    if not rankings:
+        print("  No XAI ranking files found — nothing to evaluate.")
+        return
+    print(f"  Methods found: {list(rankings.keys())}")
+
+    # ── 2. Reproduce identical model (same seed, data, preprocessing) ────
+    seed = config['seed']
+    os.environ['PYTHONHASHSEED'] = str(seed)
+    random.seed(seed)
+    np.random.seed(seed)
+
+    print("  Loading data...")
+    Xcalclass, Xpredclass, ycalclass, ypredclass = load_data(config)
+
+    print("  Preprocessing...")
+    Xcalclass_prep, Xpredclass_prep, _ = preprocess(config, Xcalclass, Xpredclass)
+
+    print(f"  Training {model_name}...")
+    result = train_model(model_name, config, Xcalclass_prep, ycalclass,
+                         Xpredclass_prep, ypredclass)
+    mc = MODEL_CONFIG[model_name]
+    model = mc['model_extractor'](result)
+
+    # ── 3. Encode true labels as numeric 0/1 ────────────────────────────
+    ycal_series = pd.Series(ycalclass).reset_index(drop=True)
+    unique_labels = sorted(ycal_series.unique())
+    label_to_num = {lab: idx for idx, lab in enumerate(unique_labels)}
+    ypred_numeric = np.array([label_to_num[l] for l in ypredclass])
+
+    # ── 4. Baseline (unmasked) performance ──────────────────────────────
+    y_hat_orig = _predict_classes(model_name, model, Xpredclass_prep)
+    f1_orig = f1_score(ypred_numeric, y_hat_orig, average='weighted', zero_division=0)
+    acc_orig = accuracy_score(ypred_numeric, y_hat_orig)
+
+    # Continuous baseline: mean_abs_diff (PLS) or probability_shift (SVM/MLP)
+    if model_name == 'pls':
+        y_cont_orig = model.predict(Xpredclass_prep).flatten()
+    else:
+        prob_orig = model.predict_proba(Xpredclass_prep)
+
+    print(f"  Baseline — F1: {f1_orig:.4f}, Accuracy: {acc_orig:.4f}")
+
+    # ── 5. Progressive masking ──────────────────────────────────────────
+    rows = []
+    for method_label, zone_list in rankings.items():
+        n_zones = len(zone_list)
+        print(f"\n  [{method_label}] {n_zones} zones: {zone_list}")
+        for k in range(1, n_zones + 1):
+            top_k_zones = zone_list[:k]
+            X_masked = _mask_zones(
+                Xpredclass_prep, top_k_zones, spectral_cuts,
+                mask_mode, Xcal_prep=Xcalclass_prep,
+            )
+            y_hat_masked = _predict_classes(model_name, model, X_masked)
+            f1_masked = f1_score(ypred_numeric, y_hat_masked,
+                                 average='weighted', zero_division=0)
+            acc_masked = accuracy_score(ypred_numeric, y_hat_masked)
+
+            # Continuous metric: mean_abs_diff (PLS) or probability_shift (SVM/MLP)
+            if model_name == 'pls':
+                y_cont_masked = model.predict(X_masked).flatten()
+                mean_abs_diff = float(np.mean(np.abs(y_cont_orig - y_cont_masked)))
+                cont_metric_name = 'mean_abs_diff'
+                cont_metric_val = mean_abs_diff
+            else:
+                prob_masked = model.predict_proba(X_masked)
+                prob_shift = float(np.mean(
+                    np.sum(np.abs(prob_orig - prob_masked), axis=1) / 2.0
+                ))
+                cont_metric_name = 'probability_shift'
+                cont_metric_val = prob_shift
+
+            rows.append({
+                'model': model_name,
+                'method': method_label,
+                'k': k,
+                'mask_mode': mask_mode,
+                'f1_original': round(f1_orig, 6),
+                'f1_masked': round(f1_masked, 6),
+                'f1_drop': round(f1_orig - f1_masked, 6),
+                'acc_original': round(acc_orig, 6),
+                'acc_masked': round(acc_masked, 6),
+                'acc_drop': round(acc_orig - acc_masked, 6),
+                cont_metric_name: round(cont_metric_val, 6),
+                'zones_removed': '; '.join(top_k_zones),
+            })
+            print(f"    k={k:2d}  F1_drop={f1_orig - f1_masked:+.4f}  "
+                  f"ACC_drop={acc_orig - acc_masked:+.4f}  "
+                  f"{cont_metric_name}={cont_metric_val:.4f}  "
+                  f"removed={top_k_zones}")
+
+    # ── 6. Export results ────────────────────────────────────────────────
+    df_faith = pd.DataFrame(rows)
+    out_path = output_dir / f'faithfulness_{dataset_name}.csv'
+    df_faith.to_csv(out_path, index=False, sep=';')
+    print(f"\n  Faithfulness results saved to {out_path}")
+    return df_faith
+
+
 # ── CLI ──────────────────────────────────────────────────────────────────────
 
 def main():
     parser = argparse.ArgumentParser(
-        description='SMX Post-Experiment Analysis (feature importance + RBO)'
+        description='SMX Post-Experiment Analysis (RBO ranking + Faithfulness)',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # RBO ranking comparison
+  python experiments/run_analysis.py --rbo --dataset soil --model mlp
+
+  # Faithfulness with zero-masking (default)
+  python experiments/run_analysis.py --faithfulness --dataset bank_notes --model mlp
+
+  # Faithfulness with median-masking
+  python experiments/run_analysis.py --faithfulness --dataset soil --model pls --mask_mode median
+
+  # Both analyses for all datasets and models
+  python experiments/run_analysis.py --rbo --faithfulness --dataset all --model all
+""",
     )
     parser.add_argument('--dataset', required=True,
                         help='Dataset name (from JSON config) or "all"')
@@ -212,8 +513,18 @@ def main():
                         help='Model type or "all"')
     parser.add_argument('--method', default='all',
                         choices=['covariance', 'perturbation', 'all'],
-                        help='Which LRC method(s) to include in the comparison')
+                        help='Which LRC method(s) to include (for --rbo)')
+    parser.add_argument('--rbo', action='store_true',
+                        help='Build feature_importance.csv and rbo_rank.csv')
+    parser.add_argument('--faithfulness', action='store_true',
+                        help='Run faithfulness evaluation (progressive zone masking)')
+    parser.add_argument('--mask_mode', default='zero',
+                        choices=['zero', 'median', 'mean'],
+                        help='Masking strategy for faithfulness (default: zero)')
     args = parser.parse_args()
+
+    if not args.rbo and not args.faithfulness:
+        parser.error("At least one of --rbo or --faithfulness is required.")
 
     datasets = list_available_datasets() if args.dataset == 'all' else [args.dataset]
     models = ['pls', 'mlp', 'svm'] if args.model == 'all' else [args.model]
@@ -221,7 +532,11 @@ def main():
     for ds in datasets:
         for mdl in models:
             try:
-                run_analysis(ds, mdl, method=args.method)
+                if args.rbo:
+                    run_analysis(ds, mdl, method=args.method)
+                if args.faithfulness:
+                    run_faithfulness(ds, mdl, mask_mode=args.mask_mode,
+                                    method=args.method)
             except Exception as e:
                 print(f"\nERROR running analysis for {ds}/{mdl}: {e}")
                 import traceback
