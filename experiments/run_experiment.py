@@ -813,6 +813,9 @@ def run_single_experiment(dataset, model_name, method, visualization=False,
             'VIP_Score': vip_scores_mat.T.iloc[:, 0].values
         })
         vip_df.sort_values('VIP_Score', ascending=False, inplace=True)
+        vip_df['Zone'] = vip_df['energy'].map(
+            dbg._map_energy_to_zone(vip_df['energy'], spectral_cuts)
+        )
         vip_path = output_dir / f'vip_{dataset_name}.csv'
         vip_df.to_csv(vip_path, index=False, sep=';')
         print(f"  VIP scores saved to {vip_path}")
@@ -826,6 +829,9 @@ def run_single_experiment(dataset, model_name, method, visualization=False,
         reg_vet.columns = ['energy', 'Reg_coef']
         reg_vet['Abs_Reg_coef'] = reg_vet['Reg_coef'].abs()
         reg_vet.sort_values('Abs_Reg_coef', ascending=False, inplace=True)
+        reg_vet['Zone'] = reg_vet['energy'].map(
+            dbg._map_energy_to_zone(reg_vet['energy'], spectral_cuts)
+        )
         reg_path = output_dir / f'reg_coef_{dataset_name}.csv'
         reg_vet.to_csv(reg_path, index=False, sep=';')
         print(f"  Regression coefficients saved to {reg_path}")
