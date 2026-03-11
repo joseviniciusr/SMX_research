@@ -25,10 +25,73 @@ sys.path.insert(0, str(WORKSPACE_ROOT))
 import preprocessings as prepr
 from modeling import pls_optimized, svm_optimized, mlp_optimized
 import smx
-from explaining import permutation_importance_per_zone
 import debugging as dbg
 from config import load_dataset_config, list_available_datasets
 from synthetic import generate_synthetic_spectral_data
+
+
+# ── Research utility (was in explaining.py) ──────────────────────────────────
+
+def permutation_importance_per_zone(estimator, X, spectral_cuts, n_repeats=10,
+                                    random_state=42, scoring_fn=None):
+    """Compute permutation feature importance and aggregate by spectral zone.
+
+    Parameters
+    ----------
+    estimator : fitted model with a ``predict`` method.
+    X : pd.DataFrame
+        Preprocessed calibration data.
+    spectral_cuts : list of tuples
+        Each tuple is ``(zone_name, start, end)``.
+    n_repeats : int, default 10
+        Number of permutation repeats per feature.
+    random_state : int, default 42
+        Random seed.
+    scoring_fn : callable, optional
+        Custom prediction function ``f(X) -> predictions``.
+        If *None*, uses ``estimator.predict()``.
+
+    Returns
+    -------
+    permutation_unique_df : pd.DataFrame
+        Zone-deduplicated permutation importance ranking.
+    permutation_df : pd.DataFrame
+        Full per-feature permutation importance with zone mapping.
+    """
+    rng = np.random.RandomState(random_state)
+    predict = scoring_fn if scoring_fn is not None else estimator.predict
+    baseline_pred = predict(X)
+    importance_list = []
+    X_arr = X.copy()
+
+    for col in X.columns:
+        diffs = []
+        for _ in range(n_repeats):
+            X_perm = X_arr.copy()
+            X_perm[col] = rng.permutation(X_perm[col].values)
+            perm_pred = predict(X_perm)
+            diffs.append(np.mean(np.abs(baseline_pred - perm_pred)))
+        importance_list.append(np.mean(diffs))
+
+    permutation_df = pd.DataFrame({
+        'energy': X.columns,
+        'Permutation_importance': importance_list,
+    })
+    permutation_df.sort_values('Permutation_importance', ascending=False, inplace=True)
+
+    energy_to_zone = {}
+    for zone_name, start, end in spectral_cuts:
+        for e in permutation_df['energy']:
+            if start <= float(e) <= end:
+                energy_to_zone[e] = zone_name
+    permutation_df['Zone'] = permutation_df['energy'].map(energy_to_zone)
+
+    permutation_unique_df = (
+        permutation_df.drop_duplicates(subset=['Zone'], keep='first')
+        .sort_values('Permutation_importance', ascending=False)
+        .reset_index(drop=True)
+    )
+    return permutation_unique_df, permutation_df
 
 # ── Model dispatch table ─────────────────────────────────────────────────────
 MODEL_CONFIG = {
