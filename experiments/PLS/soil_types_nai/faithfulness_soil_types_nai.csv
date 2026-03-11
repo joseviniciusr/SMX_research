@@ -1,0 +1,28 @@
+model;method;k;mask_mode;f1_original;f1_masked;f1_drop;acc_original;acc_masked;acc_drop;mean_abs_diff;zones_removed
+pls;SMX;1;zero;1.0;1.0;0.0;1.0;1.0;0.0;0.231559;Pb-212
+pls;SMX;2;zero;1.0;1.0;0.0;1.0;1.0;0.0;0.362559;"Pb-212; Pb-214"
+pls;SMX;3;zero;1.0;1.0;0.0;1.0;1.0;0.0;0.396887;"Pb-212; Pb-214; Tl-208"
+pls;SMX;4;zero;1.0;1.0;0.0;1.0;1.0;0.0;0.413519;"Pb-212; Pb-214; Tl-208; Ac-228 + Tl-208"
+pls;SMX;5;zero;1.0;1.0;0.0;1.0;1.0;0.0;0.421877;"Pb-212; Pb-214; Tl-208; Ac-228 + Tl-208; background 1"
+pls;SMX;6;zero;1.0;0.333333;0.666667;1.0;0.5;0.5;0.433048;"Pb-212; Pb-214; Tl-208; Ac-228 + Tl-208; background 1; Ac-228"
+pls;SMX;7;zero;1.0;0.333333;0.666667;1.0;0.5;0.5;0.435356;"Pb-212; Pb-214; Tl-208; Ac-228 + Tl-208; background 1; Ac-228; Bi-214"
+pls;SMX;8;zero;1.0;0.333333;0.666667;1.0;0.5;0.5;0.438094;"Pb-212; Pb-214; Tl-208; Ac-228 + Tl-208; background 1; Ac-228; Bi-214; background 2"
+pls;SMX;9;zero;1.0;0.333333;0.666667;1.0;0.5;0.5;0.438727;"Pb-212; Pb-214; Tl-208; Ac-228 + Tl-208; background 1; Ac-228; Bi-214; background 2; K-40"
+pls;SHAP;1;zero;1.0;1.0;0.0;1.0;1.0;0.0;0.231559;Pb-212
+pls;SHAP;2;zero;1.0;1.0;0.0;1.0;1.0;0.0;0.362559;"Pb-212; Pb-214"
+pls;SHAP;3;zero;1.0;1.0;0.0;1.0;1.0;0.0;0.379622;"Pb-212; Pb-214; Ac-228 + Tl-208"
+pls;SHAP;4;zero;1.0;1.0;0.0;1.0;1.0;0.0;0.413519;"Pb-212; Pb-214; Ac-228 + Tl-208; Tl-208"
+pls;SHAP;5;zero;1.0;1.0;0.0;1.0;1.0;0.0;0.416291;"Pb-212; Pb-214; Ac-228 + Tl-208; Tl-208; background 2"
+pls;SHAP;6;zero;1.0;1.0;0.0;1.0;1.0;0.0;0.418617;"Pb-212; Pb-214; Ac-228 + Tl-208; Tl-208; background 2; Bi-214"
+pls;SHAP;7;zero;1.0;1.0;0.0;1.0;1.0;0.0;0.429893;"Pb-212; Pb-214; Ac-228 + Tl-208; Tl-208; background 2; Bi-214; Ac-228"
+pls;SHAP;8;zero;1.0;0.333333;0.666667;1.0;0.5;0.5;0.438094;"Pb-212; Pb-214; Ac-228 + Tl-208; Tl-208; background 2; Bi-214; Ac-228; background 1"
+pls;SHAP;9;zero;1.0;0.333333;0.666667;1.0;0.5;0.5;0.438727;"Pb-212; Pb-214; Ac-228 + Tl-208; Tl-208; background 2; Bi-214; Ac-228; background 1; K-40"
+pls;Permutation;1;zero;1.0;1.0;0.0;1.0;1.0;0.0;0.231559;Pb-212
+pls;Permutation;2;zero;1.0;1.0;0.0;1.0;1.0;0.0;0.362559;"Pb-212; Pb-214"
+pls;Permutation;3;zero;1.0;1.0;0.0;1.0;1.0;0.0;0.396887;"Pb-212; Pb-214; Tl-208"
+pls;Permutation;4;zero;1.0;1.0;0.0;1.0;1.0;0.0;0.413519;"Pb-212; Pb-214; Tl-208; Ac-228 + Tl-208"
+pls;Permutation;5;zero;1.0;1.0;0.0;1.0;1.0;0.0;0.424847;"Pb-212; Pb-214; Tl-208; Ac-228 + Tl-208; Ac-228"
+pls;Permutation;6;zero;1.0;0.333333;0.666667;1.0;0.5;0.5;0.433048;"Pb-212; Pb-214; Tl-208; Ac-228 + Tl-208; Ac-228; background 1"
+pls;Permutation;7;zero;1.0;0.333333;0.666667;1.0;0.5;0.5;0.435356;"Pb-212; Pb-214; Tl-208; Ac-228 + Tl-208; Ac-228; background 1; Bi-214"
+pls;Permutation;8;zero;1.0;0.333333;0.666667;1.0;0.5;0.5;0.438094;"Pb-212; Pb-214; Tl-208; Ac-228 + Tl-208; Ac-228; background 1; Bi-214; background 2"
+pls;Permutation;9;zero;1.0;0.333333;0.666667;1.0;0.5;0.5;0.438727;"Pb-212; Pb-214; Tl-208; Ac-228 + Tl-208; Ac-228; background 1; Bi-214; background 2; K-40"
