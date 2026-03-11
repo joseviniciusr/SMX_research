@@ -10,6 +10,7 @@ import argparse
 import os
 import random
 import sys
+import time
 import warnings
 from pathlib import Path
 
@@ -654,6 +655,25 @@ def run_visualization_only(dataset, model_name, method):
     print(f"\nDone – figures saved under {output_dir}")
 
 
+def _update_technique_metrics(output_dir, technique_name, elapsed_seconds):
+    """Append or update a technique's runtime in technique_metrics.csv."""
+    metrics_path = Path(output_dir) / 'technique_metrics.csv'
+    if metrics_path.exists():
+        metrics_df = pd.read_csv(metrics_path, sep=';')
+    else:
+        metrics_df = pd.DataFrame(columns=['Technique', 'Runtime_seconds'])
+    
+    mask = metrics_df['Technique'] == technique_name
+    if mask.any():
+        metrics_df.loc[mask, 'Runtime_seconds'] = elapsed_seconds
+    else:
+        metrics_df = pd.concat([metrics_df, pd.DataFrame(
+            {'Technique': [technique_name], 'Runtime_seconds': [elapsed_seconds]}
+        )], ignore_index=True)
+    
+    metrics_df.to_csv(metrics_path, index=False, sep=';')
+
+
 # ── Main experiment orchestrator ─────────────────────────────────────────────
 
 def run_single_experiment(dataset, model_name, method, visualization=False,
@@ -683,17 +703,30 @@ def run_single_experiment(dataset, model_name, method, visualization=False,
         print(f"WARNING: model '{model_name}' not compatible with dataset '{dataset}'. Skipping.")
         return
 
+    # Create output_dir early for technique metrics
+    output_dir = SCRIPT_DIR / model_name.upper() / dataset
+    output_dir.mkdir(parents=True, exist_ok=True)
+    
     # 2a. Run auxiliary techniques first (they train their own model copy)
     if run_shap_flag:
         print("\n--- Running SHAP (auxiliary technique) ---")
         from run_shap import run_shap
+        shap_start = time.time()
         run_shap(dataset, model_name)
+        shap_elapsed = time.time() - shap_start
+        _update_technique_metrics(output_dir, 'SHAP', shap_elapsed)
 
     if run_permutation_flag:
         print("\n--- Running Permutation Importance (auxiliary technique) ---")
         from run_permutation import run_permutation
+        perm_start = time.time()
         run_permutation(dataset, model_name)
+        perm_elapsed = time.time() - perm_start
+        _update_technique_metrics(output_dir, 'Permutation', perm_elapsed)
 
+    # Track SMX start time (after auxiliary techniques)
+    smx_start_time = time.time()
+    
     # 3. Load data
     print("Loading data...")
     Xcalclass, Xpredclass, ycalclass, ypredclass = load_data(config)
@@ -819,6 +852,10 @@ def run_single_experiment(dataset, model_name, method, visualization=False,
         lrc_cov_natural.to_csv(output_dir / 'lrc_cov_natural.csv', index=False, sep=';')
     if lrc_pert_natural is not None:
         lrc_pert_natural.to_csv(output_dir / 'lrc_pert_natural.csv', index=False, sep=';')
+    
+    # 14. Track SMX runtime (entire experiment minus aux techniques)
+    smx_elapsed = time.time() - smx_start_time
+    _update_technique_metrics(output_dir, 'SMX', smx_elapsed)
 
     print(f"\nDone – artifacts saved to {output_dir}")
 
