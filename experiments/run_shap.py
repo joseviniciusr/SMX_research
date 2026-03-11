@@ -102,6 +102,15 @@ def run_shap(dataset, model_name, new_only=False):
     })
     shap_global_importance.sort_values(by='Mean_Abs_SHAP', ascending=False, inplace=True)
 
+    # 7b. Map energy to spectral zone
+    spectral_cuts = [tuple(sc) for sc in config['spectral_cuts']]
+    energy_to_zone = {}
+    for zone_name, start, end in spectral_cuts:
+        for e in shap_global_importance['energy']:
+            if start <= float(e) <= end:
+                energy_to_zone[e] = zone_name
+    shap_global_importance['Zone'] = shap_global_importance['energy'].map(energy_to_zone)
+
     # 8. Save to the same path that run_experiment / debugging.py expects
     output_dir = SCRIPT_DIR / model_name.upper() / dataset
     output_dir.mkdir(parents=True, exist_ok=True)
