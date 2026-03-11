@@ -1,25 +1,25 @@
-Shap;Permutation;LRC_perturbation
-Ca ka;Ca ka;K
-Mo compton scattering;Si;Ca ka
-Zn ka;Fe ka;Fe ka
-Cu;Mo compton scattering;Mo rayleigh scattering
-Si;Mo rayleigh scattering;Zn ka
-Fe ka;Zn ka;Mo compton scattering
-Mo rayleigh scattering;Cu;Cu
-background 5;Cl;Si
-Cl;background 6;Cl
-background 1;Fe kb;Ni
-background 2;Ni;Zn kb
-Ti;Ga;Fe kb
-background 3;Zn kb;Ga
-Ca kb;background 1;Pb La
-Fe kb;Pb La;background 6
-Ni;Pb Lb;background 1
-Ga;background 2;Pb Lb
-Zn kb;background 4;background 2
-background 4;background 3;Ca kb
-background 6;Ca kb;background 3
-Pb La;Ti;background 4
-Pb Lb;background 5;Ti
-;;background 5
-;;
+VIP_Score;Reg_Coefficient;Shap;Permutation;LRC_perturbation
+Cl;Ca ka;Ca ka;Ca ka;K
+Ca ka;Fe ka;Mo compton scattering;Si;Ca ka
+Fe ka;Si;Zn ka;Fe ka;Fe ka
+Cu;Zn ka;Cu;Mo compton scattering;Mo rayleigh scattering
+Zn ka;Cu;Si;Mo rayleigh scattering;Zn ka
+Si;Mo compton scattering;Fe ka;Zn ka;Mo compton scattering
+Mo compton scattering;Fe kb;Mo rayleigh scattering;Cu;Cu
+Mo rayleigh scattering;background 6;background 5;Cl;Si
+Ni;Mo rayleigh scattering;Cl;background 6;Cl
+Fe kb;Ni;background 1;Fe kb;Ni
+background 6;Ga;background 2;Ni;Zn kb
+Zn kb;Zn kb;Ti;Ga;Fe kb
+Ga;Pb La;background 3;Zn kb;Ga
+Pb La;background 2;Ca kb;background 1;Pb La
+background 1;background 1;Fe kb;Pb La;background 6
+Pb Lb;background 4;Ni;Pb Lb;background 1
+background 2;Cl;Ga;background 2;Pb Lb
+background 4;Pb Lb;Zn kb;background 4;background 2
+background 3;Ca kb;background 4;background 3;Ca kb
+Ca kb;background 3;background 6;Ca kb;background 3
+Ti;Ti;Pb La;Ti;background 4
+background 5;background 5;Pb Lb;background 5;Ti
+;;;;background 5
+;;;;
