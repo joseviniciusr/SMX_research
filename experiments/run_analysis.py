@@ -8,6 +8,11 @@ Available analyses (select via flags):
   --faithfulness   Faithfulness evaluation: progressively mask top-k ranked
                    zones and measure F1 / Accuracy degradation for each XAI
                    method (SMX, SHAP, Permutation).
+  --instability    Stability evaluation: vary the global split seed to produce
+                   different stratified train/test partitions, train the model
+                   for each split, run the full SMX pipeline on the training
+                   set, and collect predicate rankings across seeds for later
+                   pairwise RBO analysis.
 
 Only techniques whose output files exist are included – missing techniques
 are silently skipped so you can run analysis at any stage.
@@ -24,6 +29,11 @@ Usage:
 
     # Run both analyses at once
     python experiments/run_analysis.py --rbo --faithfulness --dataset bank_notes --model mlp
+
+    # Instability evaluation (vary split seed, extract SMX rankings per seed)
+    python experiments/run_analysis.py --instability --dataset soil --model mlp --seed_number 5 --smx_seed_number 4
+    python experiments/run_analysis.py --instability --dataset bank_notes --model pls --seed_number 20 --smx_seed_number 4
+    python experiments/run_analysis.py --instability --dataset all --model all --seed_number 10 --smx_seed_number 3 --method perturbation
 """
 
 import argparse
@@ -42,11 +52,16 @@ WORKSPACE_ROOT = SCRIPT_DIR.parent
 if str(WORKSPACE_ROOT) not in sys.path:
     sys.path.insert(0, str(WORKSPACE_ROOT))
 
+from sklearn.model_selection import train_test_split as sklearn_train_test_split
+
 from config import build_effective_config, load_dataset_config, list_available_datasets
 import debugging as dbg
+import smx
 from run_experiment import (
-    load_data, preprocess, train_model, MODEL_CONFIG,
+    load_data, preprocess, train_model, extract_y_continuous,
+    MODEL_CONFIG, _run_lrc_pipeline,
 )
+from synthetic import generate_synthetic_spectral_data
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
@@ -485,11 +500,237 @@ def run_faithfulness(dataset, model_name, mask_mode='zero', method='perturbation
     return df_faith
 
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# Instability (stability) evaluation
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def _load_data_stratified(config, split_seed):
+    """Load dataset and split via stratified random sampling.
+
+    Unlike :func:`run_experiment.load_data` which uses Kennard-Stone, this
+    function uses ``sklearn.model_selection.train_test_split`` with
+    ``stratify`` to preserve class proportions, controlled by *split_seed*.
+
+    Parameters
+    ----------
+    config : dict
+        Dataset JSON configuration.
+    split_seed : int
+        Random state for the stratified split.
+
+    Returns
+    -------
+    Xcal, Xpred : pd.DataFrame
+        Spectral features for calibration and prediction sets.
+    ycal, ypred : pd.Series
+        Class labels for calibration and prediction sets.
+    """
+    class_col = config.get('class_column', 'Class')
+    test_size = config.get('test_size', 0.30)
+
+    if config.get('is_synthetic'):
+        syn_cfg = config['synthetic_config']
+        data_complete = generate_synthetic_spectral_data(
+            configuracao_classes=syn_cfg['classes'],
+            n_pontos=syn_cfg['n_pontos'],
+            x_min=syn_cfg['x_min'],
+            x_max=syn_cfg['x_max'],
+            seed=syn_cfg['seed'],
+        )
+        spectral_cols = [c for c in data_complete.columns if c != class_col]
+        X_all = data_complete[spectral_cols]
+    else:
+        csv_file = config['csv_file']
+        sep = config.get('separator', ';')
+        if config.get('csv_file_is_external'):
+            csv_path = WORKSPACE_ROOT / csv_file
+        else:
+            csv_path = WORKSPACE_ROOT / 'real_datasets' / 'xrf' / csv_file
+        data_complete = pd.read_csv(str(csv_path), sep=sep)
+        start_col, end_col = config['spectral_range']
+        X_all = data_complete.loc[:, start_col:end_col]
+
+    y_all = data_complete[class_col]
+
+    Xcal, Xpred, ycal, ypred = sklearn_train_test_split(
+        X_all, y_all,
+        test_size=test_size,
+        stratify=y_all,
+        random_state=split_seed,
+    )
+
+    Xcal = Xcal.reset_index(drop=True)
+    Xpred = Xpred.reset_index(drop=True)
+    ycal = ycal.reset_index(drop=True)
+    ypred = ypred.reset_index(drop=True)
+
+    return Xcal, Xpred, ycal, ypred
+
+
+def run_instability(dataset, model_name, seed_number, smx_seed_number,
+                    method='perturbation'):
+    """Run instability (stability) evaluation for a (dataset, model) pair.
+
+    For each *split_seed* in ``range(seed_number)``:
+
+    1. Stratified random split (controlled by *split_seed*).
+    2. Preprocess and train the model (parameters from JSON config).
+    3. Collect full performance metrics (identical to ``run_experiment``).
+    4. Run the SMX pipeline on the **training** set with **progressively
+       growing** subsets of internal bagging seeds.  For
+       ``smx_seed_number = M`` the pipeline is executed ``M`` times per
+       split per LRC method, once for each cumulative subset:
+       ``[0]``, ``[0,1]``, ``[0,1,2]``, … , ``[0,…,M-1]``.
+       The same trained model, PCA aggregation, and predicate catalogue are
+       reused across all internal-seed subsets within the same split —
+       only the bagging / graph / LRC aggregation changes.
+    5. Collect the aggregated LRC predicate ranking for every combination
+       of (split_seed, smx_seeds_used).
+
+    All results are concatenated across seeds and saved as two CSV files:
+
+    * ``instability_smx_{dataset_name}.csv`` — predicate rankings.  Each
+      row carries ``split_seed`` (which data split), ``smx_seeds_used``
+      (how many internal seeds were aggregated, 1 … M), and
+      ``smx_seed_number`` (the configured maximum M).
+    * ``instability_performance_{dataset_name}.csv`` — model metrics per
+      split seed (one entry per split; independent of SMX internal seeds).
+
+    Parameters
+    ----------
+    dataset : str
+        Dataset identifier.
+    model_name : str
+        One of ``'pls'``, ``'mlp'``, ``'svm'``.
+    seed_number : int
+        Number of global split seeds to evaluate (``0 .. seed_number-1``).
+    smx_seed_number : int
+        Maximum number of internal SMX bagging seeds.  The pipeline runs
+        progressively for ``1, 2, …, smx_seed_number`` internal seeds.
+    method : str
+        LRC method: ``'perturbation'``, ``'covariance'``, or ``'all'``.
+    """
+    print(f"\n{'#'*70}")
+    print(f"# Instability: dataset={dataset}, model={model_name}, "
+          f"seeds={seed_number}, smx_seeds={smx_seed_number}, method={method}")
+    print(f"{'#'*70}\n")
+
+    # ── 0. Load config & validate ────────────────────────────────────────
+    config = load_dataset_config(dataset)
+    dataset_name = config['name']
+    spectral_cuts = [tuple(sc) for sc in config['spectral_cuts']]
+    output_dir = SCRIPT_DIR / model_name.upper() / dataset
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    if model_name not in config.get('compatible_models', []):
+        print(f"  Model '{model_name}' not compatible with dataset '{dataset}'. Skipping.")
+        return
+
+    # Determine which LRC methods to run
+    methods_to_run = []
+    if method in ('perturbation', 'all'):
+        methods_to_run.append('perturbation')
+    if method in ('covariance', 'all'):
+        methods_to_run.append('covariance')
+
+    all_performance = []
+    all_lrc = []
+
+    for split_seed in range(seed_number):
+        print(f"\n{'='*70}")
+        print(f"  Split seed {split_seed}/{seed_number - 1}")
+        print(f"{'='*70}\n")
+
+        # ── 1. Stratified split ──────────────────────────────────────────
+        print("  Loading data (stratified split)...")
+        Xcal, Xpred, ycal, ypred = _load_data_stratified(config, split_seed)
+        print(f"    Xcal: {Xcal.shape}, Xpred: {Xpred.shape}")
+
+        # ── 2. Preprocess ────────────────────────────────────────────────
+        print("  Preprocessing...")
+        Xcal_prep, Xpred_prep, _ = preprocess(config, Xcal, Xpred)
+
+        # ── 3. Train model (once per split_seed) ────────────────────────
+        print(f"  Training {model_name}...")
+        result = train_model(model_name, config, Xcal_prep, ycal,
+                             Xpred_prep, ypred)
+
+        # ── 4. Collect performance metrics ───────────────────────────────
+        df_perf = result[0].copy()
+        df_perf.insert(0, 'split_seed', split_seed)
+        all_performance.append(df_perf)
+        print(f"  Performance (split_seed={split_seed}):")
+        print(df_perf.to_string(index=False))
+
+        # ── 5. SMX on training set (reuse model for all internal seeds) ──
+        mc = MODEL_CONFIG[model_name]
+        model = mc['model_extractor'](result)
+        y_pred_cont = extract_y_continuous(model_name, result)
+
+        print("  PCA aggregation (training set)...")
+        spectral_zones = smx.extract_spectral_zones(Xcal_prep, spectral_cuts)
+        aggregator = smx.ZoneAggregator(method='pca')
+        zone_scores_df = aggregator.fit_transform(spectral_zones)
+        pca_info_dict = aggregator.pca_info_
+
+        pred_gen = smx.PredicateGenerator(quantiles=[0.2, 0.4, 0.6, 0.8])
+        pred_gen.fit(zone_scores_df)
+        predicates_df = pred_gen.predicates_df_
+
+        # Progressive SMX internal seeds: [0], [0,1], [0,1,2], ...
+        for metric_type in methods_to_run:
+            for n_smx_seeds in range(1, smx_seed_number + 1):
+                smx_seeds_list = list(range(n_smx_seeds))
+                print(f"\n  --- LRC pipeline ({metric_type}) | "
+                      f"split_seed={split_seed} | "
+                      f"smx_seeds={smx_seeds_list} ---")
+
+                config_iter = dict(config)
+                config_iter['random_seeds'] = smx_seeds_list
+
+                try:
+                    lrc_summed_df, _, _, _, _ = _run_lrc_pipeline(
+                        config_iter, metric_type, zone_scores_df,
+                        y_pred_cont, predicates_df, pca_info_dict,
+                        Xcal, Xcal_prep, spectral_cuts,
+                        model=model, model_name=model_name,
+                    )
+                    lrc_out = lrc_summed_df.copy()
+                    lrc_out.insert(0, 'split_seed', split_seed)
+                    lrc_out['smx_seeds_used'] = n_smx_seeds
+                    lrc_out['smx_seed_number'] = smx_seed_number
+                    lrc_out['method'] = metric_type
+                    lrc_out['model'] = model_name
+                    all_lrc.append(lrc_out)
+                except RuntimeError as exc:
+                    print(f"    WARNING: {exc}")
+                    continue
+
+    # ── 6. Export results ────────────────────────────────────────────────
+    if all_performance:
+        df_perf_all = pd.concat(all_performance, ignore_index=True)
+        perf_path = output_dir / f'instability_performance_{dataset_name}.csv'
+        df_perf_all.to_csv(perf_path, index=False, sep=';')
+        print(f"\n  Performance metrics saved to {perf_path}")
+        print(df_perf_all)
+    else:
+        print("\n  No performance results collected.")
+
+    if all_lrc:
+        df_lrc_all = pd.concat(all_lrc, ignore_index=True)
+        lrc_path = output_dir / f'instability_smx_{dataset_name}.csv'
+        df_lrc_all.to_csv(lrc_path, index=False, sep=';')
+        print(f"\n  SMX instability rankings saved to {lrc_path}")
+        print(df_lrc_all)
+    else:
+        print("\n  No SMX ranking results collected.")
+
+
 # ── CLI ──────────────────────────────────────────────────────────────────────
 
 def main():
     parser = argparse.ArgumentParser(
-        description='SMX Post-Experiment Analysis (RBO ranking + Faithfulness)',
+        description='SMX Post-Experiment Analysis (RBO ranking + Faithfulness + Instability)',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
@@ -502,8 +743,17 @@ Examples:
   # Faithfulness with median-masking
   python experiments/run_analysis.py --faithfulness --dataset soil --model pls --mask_mode median
 
-  # Both analyses for all datasets and models
+  # Both RBO and Faithfulness for all datasets and models
   python experiments/run_analysis.py --rbo --faithfulness --dataset all --model all
+
+  # Instability: 5 global split seeds, 4 internal SMX bagging seeds
+  python experiments/run_analysis.py --instability --dataset soil --model mlp --seed_number 5 --smx_seed_number 4
+
+  # Instability: 20 global seeds, 4 SMX seeds, perturbation only
+  python experiments/run_analysis.py --instability --dataset bank_notes --model pls --seed_number 20 --smx_seed_number 4 --method perturbation
+
+  # Instability for all datasets and all models
+  python experiments/run_analysis.py --instability --dataset all --model all --seed_number 10 --smx_seed_number 3
 """,
     )
     parser.add_argument('--dataset', required=True,
@@ -513,7 +763,7 @@ Examples:
                         help='Model type or "all"')
     parser.add_argument('--method', default='all',
                         choices=['covariance', 'perturbation', 'all'],
-                        help='Which LRC method(s) to include (for --rbo)')
+                        help='Which LRC method(s) to include')
     parser.add_argument('--rbo', action='store_true',
                         help='Build feature_importance.csv and rbo_rank.csv')
     parser.add_argument('--faithfulness', action='store_true',
@@ -521,10 +771,19 @@ Examples:
     parser.add_argument('--mask_mode', default='zero',
                         choices=['zero', 'median', 'mean'],
                         help='Masking strategy for faithfulness (default: zero)')
+    parser.add_argument('--instability', action='store_true',
+                        help='Run instability (stability) evaluation: vary split '
+                             'seed, train model, extract SMX rankings per seed')
+    parser.add_argument('--seed_number', type=int, default=5,
+                        help='Number of global split seeds for --instability '
+                             '(seeds 0..N-1, default: 5)')
+    parser.add_argument('--smx_seed_number', type=int, default=4,
+                        help='Number of internal SMX bagging seeds for '
+                             '--instability (seeds 0..M-1, default: 4)')
     args = parser.parse_args()
 
-    if not args.rbo and not args.faithfulness:
-        parser.error("At least one of --rbo or --faithfulness is required.")
+    if not args.rbo and not args.faithfulness and not args.instability:
+        parser.error("At least one of --rbo, --faithfulness, or --instability is required.")
 
     datasets = list_available_datasets() if args.dataset == 'all' else [args.dataset]
     models = ['pls', 'mlp', 'svm'] if args.model == 'all' else [args.model]
@@ -536,6 +795,11 @@ Examples:
                     run_analysis(ds, mdl, method=args.method)
                 if args.faithfulness:
                     run_faithfulness(ds, mdl, mask_mode=args.mask_mode,
+                                    method=args.method)
+                if args.instability:
+                    run_instability(ds, mdl,
+                                    seed_number=args.seed_number,
+                                    smx_seed_number=args.smx_seed_number,
                                     method=args.method)
             except Exception as e:
                 print(f"\nERROR running analysis for {ds}/{mdl}: {e}")
