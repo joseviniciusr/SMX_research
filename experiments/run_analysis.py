@@ -10,9 +10,9 @@ Available analyses (select via flags):
                    method (SMX, SHAP, Permutation).
   --instability    Stability evaluation: vary the global split seed to produce
                    different stratified train/test partitions, train the model
-                   for each split, run the full SMX pipeline on the training
-                   set, and collect predicate rankings across seeds for later
-                   pairwise RBO analysis.
+                   for each split, run the full SMX pipeline (via the ``SMX``
+                   facade class) on the training set, and collect predicate
+                   rankings across seeds for later pairwise RBO analysis.
 
 Only techniques whose output files exist are included – missing techniques
 are silently skipped so you can run analysis at any stage.
@@ -57,11 +57,12 @@ from sklearn.model_selection import train_test_split as sklearn_train_test_split
 from config import build_effective_config, load_dataset_config, list_available_datasets
 import debugging as dbg
 import smx
+from smx import SMX
 from run_experiment import (
     load_data, preprocess, train_model, extract_y_continuous,
-    MODEL_CONFIG, _run_lrc_pipeline,
+    MODEL_CONFIG,
 )
-from synthetic import generate_synthetic_spectral_data
+from smx.datasets.synthetic import generate_synthetic_spectral_data
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
@@ -576,14 +577,18 @@ def run_instability(dataset, model_name, seed_number, smx_seed_number,
     1. Stratified random split (controlled by *split_seed*).
     2. Preprocess and train the model (parameters from JSON config).
     3. Collect full performance metrics (identical to ``run_experiment``).
-    4. Run the SMX pipeline on the **training** set with **progressively
+    4. Run the full SMX pipeline (via the ``SMX`` facade class from the
+       ``smx`` library) on the **training** set with **progressively
        growing** subsets of internal bagging seeds.  For
        ``smx_seed_number = M`` the pipeline is executed ``M`` times per
        split per LRC method, once for each cumulative subset:
        ``[0]``, ``[0,1]``, ``[0,1,2]``, … , ``[0,…,M-1]``.
-       The same trained model, PCA aggregation, and predicate catalogue are
-       reused across all internal-seed subsets within the same split —
-       only the bagging / graph / LRC aggregation changes.
+       Each ``SMX.fit()`` call internally performs zone extraction, PCA
+       aggregation, predicate generation, bagging, metric computation,
+       graph construction, LRC, cross-seed aggregation, and natural-scale
+       threshold mapping.  Since the deterministic steps (zone extraction,
+       PCA, predicate generation) depend only on the data and cuts, the
+       results are identical across calls within the same split.
     5. Collect the aggregated LRC predicate ranking for every combination
        of (split_seed, smx_seeds_used).
 
@@ -667,35 +672,45 @@ def run_instability(dataset, model_name, seed_number, smx_seed_number,
         model = mc['model_extractor'](result)
         y_pred_cont = extract_y_continuous(model_name, result)
 
-        print("  PCA aggregation (training set)...")
-        spectral_zones = smx.extract_spectral_zones(Xcal_prep, spectral_cuts)
-        aggregator = smx.ZoneAggregator(method='pca')
-        zone_scores_df = aggregator.fit_transform(spectral_zones)
-        pca_info_dict = aggregator.pca_info_
-
-        pred_gen = smx.PredicateGenerator(quantiles=[0.2, 0.4, 0.6, 0.8])
-        pred_gen.fit(zone_scores_df)
-        predicates_df = pred_gen.predicates_df_
+        # Common SMX kwargs shared across all metric types and seed subsets
+        _base_kwargs = dict(
+            spectral_cuts=spectral_cuts,
+            quantiles=[0.2, 0.4, 0.6, 0.8],
+            n_bags=10,
+            n_samples_fraction=0.8,
+            min_samples_fraction=0.2,
+            var_exp=True,
+        )
 
         # Progressive SMX internal seeds: [0], [0,1], [0,1,2], ...
         for metric_type in methods_to_run:
             for n_smx_seeds in range(1, smx_seed_number + 1):
                 smx_seeds_list = list(range(n_smx_seeds))
-                print(f"\n  --- LRC pipeline ({metric_type}) | "
+                print(f"\n  --- SMX pipeline ({metric_type}) | "
                       f"split_seed={split_seed} | "
                       f"smx_seeds={smx_seeds_list} ---")
 
-                config_iter = dict(config)
-                config_iter['random_seeds'] = smx_seeds_list
+                _iter_kwargs = dict(_base_kwargs, seeds=smx_seeds_list)
+
+                if metric_type == 'covariance':
+                    _iter_kwargs.update(
+                        metric='covariance',
+                        covariance_threshold=0.01,
+                    )
+                else:
+                    _iter_kwargs.update(
+                        metric='perturbation',
+                        estimator=model,
+                        perturbation_mode='median',
+                        perturbation_metric=mc['perturbation_metric'],
+                        normalize_by_zone_size=True,
+                        zone_size_exponent=1.0,
+                    )
 
                 try:
-                    lrc_summed_df, _, _, _, _ = _run_lrc_pipeline(
-                        config_iter, metric_type, zone_scores_df,
-                        y_pred_cont, predicates_df, pca_info_dict,
-                        Xcal, Xcal_prep, spectral_cuts,
-                        model=model, model_name=model_name,
-                    )
-                    lrc_out = lrc_summed_df.copy()
+                    explainer = SMX(**_iter_kwargs)
+                    explainer.fit(Xcal_prep, y_pred_cont, X_cal_natural=Xcal)
+                    lrc_out = explainer.lrc_summed_.copy()
                     lrc_out.insert(0, 'split_seed', split_seed)
                     lrc_out['smx_seeds_used'] = n_smx_seeds
                     lrc_out['smx_seed_number'] = smx_seed_number
