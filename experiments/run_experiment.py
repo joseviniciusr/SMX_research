@@ -279,133 +279,6 @@ def extract_y_continuous(model_name, result):
     return pd.Series(MODEL_CONFIG[model_name]['y_pred_extractor'](result).values)
 
 
-# ── LRC Pipelines ────────────────────────────────────────────────────────────
-
-def _run_lrc_pipeline(config, metric_type, zone_scores_df, y_pred, predicates_df,
-                      pca_info_dict, Xcalclass, Xcalclass_prep, spectral_cuts,
-                      model=None, model_name=None):
-    """Run covariance or perturbation LRC pipeline across seeds.
-
-    Returns: (lrc_summed_df, lrc_summed_unique_df, lrc_natural_df,
-              spectral_zones_original, pca_info_dict_original)
-    """
-    random_seeds = list(range(config.get('number_of_baggings', 4)))
-    training_samples = len(zone_scores_df)
-    y_pred_series = pd.Series(y_pred.values) if hasattr(y_pred, 'values') else pd.Series(y_pred)
-
-    # Phase 1: compute metrics per seed
-    all_results = {}
-    for seed in random_seeds:
-        print(f"\n{'='*70}")
-        print(f"Processing seed ({metric_type}): {seed}")
-        print(f"{'='*70}\n")
-
-        bagger = smx.PredicateBagger(
-            n_bags=10,
-            n_samples_per_bag=int(training_samples * 0.8),
-            min_samples_per_predicate=int(training_samples * 0.2),
-            replace=False,
-            sample_bagging=True,
-            predicate_bagging=False,
-            random_seed=seed,
-        )
-        bags_result_seed = bagger.run(zone_scores_df, y_pred_series, predicates_df)
-
-        for bag_name, pred_dict in bags_result_seed.items():
-            for pred_rule, df_info in pred_dict.items():
-                df_info['Class_Predicted'] = np.where(
-                    df_info['Predicted_Y'] >= 0.5, 'A', 'B'
-                )
-
-        if metric_type == 'covariance':
-            metric_obj = smx.CovarianceMetric(
-                metric='covariance', threshold=0.01, n_neighbors=5
-            )
-            metric_results = metric_obj.compute(bags_result_seed)
-        else:  # perturbation
-            mc = MODEL_CONFIG[model_name]
-            metric_obj = smx.PerturbationMetric(
-                estimator=model,
-                Xcalclass_prep=Xcalclass_prep,
-                predicates_df=predicates_df,
-                spectral_cuts=spectral_cuts,
-                perturbation_mode='median',
-                stats_source='full',
-                metric=mc['perturbation_metric'],
-                verbose=True,
-                normalize_by_zone_size=True,
-                zone_size_exponent=1.0,
-            )
-            metric_results = metric_obj.compute(bags_result_seed)
-
-        all_results[seed] = {
-            'bags_result': bags_result_seed,
-            'metric_results': metric_results
-        }
-
-    # Phase 2: build graphs per seed
-    metric_column = 'Covariance' if metric_type == 'covariance' else 'Perturbation'
-    graphs_by_seed = {}
-    for seed in random_seeds:
-        print(f"\n{'='*70}")
-        print(f"Processing graph ({metric_type}) - Seed: {seed}")
-        print(f"{'='*70}\n")
-        builder = smx.PredicateGraphBuilder(
-            random_state=seed,
-            show_details=True,
-            var_exp=True,
-            pca_info_dict=pca_info_dict,
-        )
-        DG = builder.build(
-            bags_result=all_results[seed]['bags_result'],
-            predicate_ranking_dict=all_results[seed]['metric_results'],
-            metric_column=metric_column,
-        )
-        graphs_by_seed[seed] = DG
-
-    # Phase 3: LRC per seed
-    lrc_by_seed = {}
-    for seed in random_seeds:
-        DG = graphs_by_seed[seed]
-        predicate_nodes = [n for n, attr in DG.nodes(data=True)
-                           if attr.get('node_type') == 'predicate']
-        if len(predicate_nodes) == 0:
-            print(f"  WARNING: seed {seed} produced an empty graph ({metric_type}), skipping.")
-            continue
-        lrc_df_seed = smx.compute_lrc(DG, predicates_df)
-        lrc_df_seed['Seed'] = seed
-        lrc_by_seed[seed] = lrc_df_seed
-
-    if not lrc_by_seed:
-        raise RuntimeError(
-            f"All seeds produced empty graphs for {metric_type}. "
-            "The model may be degenerate (e.g., all predictions on one side)."
-        )
-
-    # Phase 4: aggregate across seeds
-    valid_seeds = list(lrc_by_seed.keys())
-    lrc_summed_df, lrc_summed_unique_df = smx.aggregate_lrc_across_seeds(
-        lrc_by_seed, valid_seeds
-    )
-    print(lrc_summed_unique_df)
-
-    # Phase 5: map to natural scale
-    spectral_zones_original = smx.extract_spectral_zones(Xcalclass, spectral_cuts)
-    agg_original = smx.ZoneAggregator(method='pca')
-    zone_scores_natural = agg_original.fit_transform(spectral_zones_original)
-
-    lrc_natural_df = smx.map_thresholds_to_natural(
-        lrc_df=lrc_summed_df,
-        zone_sums_preprocessed=zone_scores_df,
-        zone_sums_natural=zone_scores_natural,
-    )
-    print(lrc_natural_df)
-
-    pca_info_dict_original = agg_original.pca_info_
-
-    return lrc_summed_df, lrc_summed_unique_df, lrc_natural_df, spectral_zones_original, pca_info_dict_original
-
-
 # ── Visualization helpers ────────────────────────────────────────────────────
 
 def save_visualization_data(lrc_natural_df, spectral_zones_original,
@@ -751,64 +624,77 @@ def run_single_experiment(dataset, model_name, method, visualization=False,
     model = mc['model_extractor'](result)
     y_pred_cont = extract_y_continuous(model_name, result)
 
-    # 7. PCA aggregation
-    print("PCA aggregation...")
-    spectral_zones_class = smx.extract_spectral_zones(Xcalclass_prep, spectral_cuts)
-    aggregator = smx.ZoneAggregator(method='pca')
-    zone_scores_df = aggregator.fit_transform(spectral_zones_class)
-    pca_info_dict = aggregator.pca_info_
-    print(f"  Zone scores shape: {zone_scores_df.shape}")
-
-    # 8. Predicates
-    pred_gen = smx.PredicateGenerator(quantiles=[0.2, 0.4, 0.6, 0.8])
-    pred_gen.fit(zone_scores_df)
-    predicates_df = pred_gen.predicates_df_
-
-    # 9. Output directory
+    # 7. Output directory
     output_dir = SCRIPT_DIR / model_name.upper() / dataset
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # 10. Run LRC pipelines
-    lrc_cov_natural = None
-    lrc_pert_natural = None
+    # 8. Common SMXExplainer kwargs
+    seeds = list(range(config.get('number_of_baggings', 4)))
+    quantiles = [0.2, 0.4, 0.6, 0.8]
+    _base_kwargs = dict(
+        spectral_cuts=spectral_cuts,
+        quantiles=quantiles,
+        seeds=seeds,
+        n_bags=10,
+        n_samples_fraction=0.8,
+        min_samples_fraction=0.2,
+        var_exp=True,
+        show_graph_details=True,
+    )
+
+    # 9. Run LRC pipelines
+    cov_explainer = None
+    pert_explainer = None
 
     if method in ('covariance', 'all'):
         print("\n--- Covariance Pipeline ---")
-        _, _, lrc_cov_natural, cov_zones_orig, cov_pca_orig = _run_lrc_pipeline(
-            config, 'covariance', zone_scores_df, y_pred_cont,
-            predicates_df, pca_info_dict,
-            Xcalclass, Xcalclass_prep, spectral_cuts,
-            model=model, model_name=model_name
+        cov_explainer = smx.Explainer(
+            metric='covariance',
+            covariance_threshold=0.01,
+            **_base_kwargs,
         )
+        cov_explainer.fit(Xcalclass_prep, y_pred_cont, X_cal_natural=Xcalclass)
+        print(cov_explainer.lrc_summed_unique_)
+        print(cov_explainer.lrc_natural_)
         save_visualization_data(
-            lrc_cov_natural, cov_zones_orig, cov_pca_orig,
+            cov_explainer.lrc_natural_, cov_explainer.zones_natural_,
+            cov_explainer.pca_info_natural_,
             ycalclass, output_dir, prefix='cov'
         )
         if visualization:
             build_and_export_figure(
-                lrc_cov_natural, cov_zones_orig, cov_pca_orig,
+                cov_explainer.lrc_natural_, cov_explainer.zones_natural_,
+                cov_explainer.pca_info_natural_,
                 ycalclass, output_dir, prefix='cov'
             )
 
     if method in ('perturbation', 'all'):
         print("\n--- Perturbation Pipeline ---")
-        _, _, lrc_pert_natural, pert_zones_orig, pert_pca_orig = _run_lrc_pipeline(
-            config, 'perturbation', zone_scores_df, y_pred_cont,
-            predicates_df, pca_info_dict,
-            Xcalclass, Xcalclass_prep, spectral_cuts,
-            model=model, model_name=model_name
+        pert_explainer = smx.Explainer(
+            metric='perturbation',
+            estimator=model,
+            perturbation_mode='median',
+            perturbation_metric=mc['perturbation_metric'],
+            normalize_by_zone_size=True,
+            zone_size_exponent=1.0,
+            **_base_kwargs,
         )
+        pert_explainer.fit(Xcalclass_prep, y_pred_cont, X_cal_natural=Xcalclass)
+        print(pert_explainer.lrc_summed_unique_)
+        print(pert_explainer.lrc_natural_)
         save_visualization_data(
-            lrc_pert_natural, pert_zones_orig, pert_pca_orig,
+            pert_explainer.lrc_natural_, pert_explainer.zones_natural_,
+            pert_explainer.pca_info_natural_,
             ycalclass, output_dir, prefix='pert'
         )
         if visualization:
             build_and_export_figure(
-                lrc_pert_natural, pert_zones_orig, pert_pca_orig,
+                pert_explainer.lrc_natural_, pert_explainer.zones_natural_,
+                pert_explainer.pca_info_natural_,
                 ycalclass, output_dir, prefix='pert'
             )
 
-    # 11. Export model-specific importance (lightweight, always saved)
+    # 10. Export model-specific importance (lightweight, always saved)
     dataset_name = config['name']
     print("\n--- Model-specific importance ---")
 
@@ -855,17 +741,17 @@ def run_single_experiment(dataset, model_name, method, visualization=False,
         pvector_df.to_csv(pvector_path, index=False, sep=';')
         print(f"  SVM P-vector saved to {pvector_path}")
 
-    # 12. Export performance metrics
+    # 11. Export performance metrics
     metrics_csv = output_dir / 'performance_metrics.csv'
     dbg.export_performance_metrics(result[0], str(metrics_csv))
 
-    # 13. Save LRC artifacts
-    if lrc_cov_natural is not None:
-        lrc_cov_natural.to_csv(output_dir / 'lrc_cov_natural.csv', index=False, sep=';')
-    if lrc_pert_natural is not None:
-        lrc_pert_natural.to_csv(output_dir / 'lrc_pert_natural.csv', index=False, sep=';')
-    
-    # 14. Track SMX runtime (entire experiment minus aux techniques)
+    # 12. Save LRC artifacts
+    if cov_explainer is not None:
+        cov_explainer.lrc_natural_.to_csv(output_dir / 'lrc_cov_natural.csv', index=False, sep=';')
+    if pert_explainer is not None:
+        pert_explainer.lrc_natural_.to_csv(output_dir / 'lrc_pert_natural.csv', index=False, sep=';')
+
+    # 13. Track SMX runtime (entire experiment minus aux techniques)
     smx_elapsed = time.time() - smx_start_time
     _update_technique_metrics(output_dir, 'SMX', smx_elapsed)
 
