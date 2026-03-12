@@ -1,0 +1,6 @@
+{
+  "hidden_layer_sizes": [64, 32],
+  "activation": "tanh",
+  "learning_rate": "adaptive",
+  "max_iter": 10
+}
