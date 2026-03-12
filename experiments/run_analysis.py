@@ -42,7 +42,7 @@ WORKSPACE_ROOT = SCRIPT_DIR.parent
 if str(WORKSPACE_ROOT) not in sys.path:
     sys.path.insert(0, str(WORKSPACE_ROOT))
 
-from config import load_dataset_config, list_available_datasets
+from config import build_effective_config, load_dataset_config, list_available_datasets
 import debugging as dbg
 from run_experiment import (
     load_data, preprocess, train_model, MODEL_CONFIG,
@@ -190,7 +190,7 @@ def run_analysis(dataset, model_name, method='all'):
     print(f"# RBO Analysis: dataset={dataset}, model={model_name}, method={method}")
     print(f"{'#'*70}\n")
 
-    config = load_dataset_config(dataset)
+    config = build_effective_config(dataset, model_name)
     dataset_name = config['name']
     spectral_cuts = [tuple(sc) for sc in config['spectral_cuts']]
     output_dir = SCRIPT_DIR / model_name.upper() / dataset
@@ -370,7 +370,7 @@ def run_faithfulness(dataset, model_name, mask_mode='zero', method='perturbation
     print(f"{'#'*70}\n")
 
     # ── 0. Load config & validate ────────────────────────────────────────
-    config = load_dataset_config(dataset)
+    config = build_effective_config(dataset, model_name)
     dataset_name = config['name']
     spectral_cuts = [tuple(sc) for sc in config['spectral_cuts']]
     output_dir = SCRIPT_DIR / model_name.upper() / dataset
