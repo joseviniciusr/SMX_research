@@ -27,7 +27,7 @@ import preprocessings as prepr
 from modeling import pls_optimized, svm_optimized, mlp_optimized
 import smx
 import debugging as dbg
-from config import load_dataset_config, list_available_datasets
+from config import build_effective_config, load_dataset_config, list_available_datasets
 from synthetic import generate_synthetic_spectral_data
 
 
@@ -683,8 +683,8 @@ def run_single_experiment(dataset, model_name, method, visualization=False,
     print(f"# Experiment: dataset={dataset}, model={model_name}, method={method}")
     print(f"{'#'*70}\n")
 
-    # 0. Load config
-    config = load_dataset_config(dataset)
+    # 0. Load config (global defaults + model defaults + dataset overrides)
+    config = build_effective_config(dataset, model_name)
 
     # 1. Read seed from config (required)
     if 'seed' not in config:
@@ -706,6 +706,12 @@ def run_single_experiment(dataset, model_name, method, visualization=False,
     # Create output_dir early for technique metrics
     output_dir = SCRIPT_DIR / model_name.upper() / dataset
     output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Save the effective config used for this run
+    import json as _json
+    with open(output_dir / 'run_config.json', 'w') as _f:
+        _json.dump(config, _f, indent=2)
+    print(f"  Effective config saved to {output_dir / 'run_config.json'}")
     
     # 2a. Run auxiliary techniques first (they train their own model copy)
     if run_shap_flag:
