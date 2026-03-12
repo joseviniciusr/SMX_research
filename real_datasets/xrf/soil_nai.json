@@ -1,44 +1,75 @@
 {
   "name": "soil_nai",
   "csv_file": "soil_nai.csv",
-  "separator": ";",
-  "class_column": "Class",
-  "spectral_range": ["95", "610"],
-
-  "preprocessing": [{"method": "savgol", "window_length": 15, "polyorder": 2, "deriv": 0}, "mc"],
-  "preprocessing_mc": false,
-
-  "training_aim": "classification",
-  "random_seeds": [0, 1, 2, 3],
-  "seed": 1,
-  "test_size": 0.30,
-
-  "spectral_cuts": [
-    ["Pb-212", 95, 115],
-    ["Pb-214", 115, 190],
-    ["Ac-228 + Tl-208", 190, 232],
-    ["Tl-208", 232, 275],
-    ["background 1", 275, 350],
-    ["Ac-228", 350, 420],
-    ["Bi-214", 420, 480],
-    ["background 2", 480, 540],
-    ["K-40", 540, 610]
+  "spectral_range": [
+    "95",
+    "610"
   ],
-
-  "compatible_models": ["pls", "mlp", "svm"],
+  "preprocessing": [
+    {
+      "method": "savgol",
+      "window_length": 15,
+      "polyorder": 2,
+      "deriv": 0
+    },
+    "mc"
+  ],
+  "preprocessing_mc": false,
+  "spectral_cuts": [
+    [
+      "Pb-212",
+      95,
+      115
+    ],
+    [
+      "Pb-214",
+      115,
+      190
+    ],
+    [
+      "Ac-228 + Tl-208",
+      190,
+      232
+    ],
+    [
+      "Tl-208",
+      232,
+      275
+    ],
+    [
+      "background 1",
+      275,
+      350
+    ],
+    [
+      "Ac-228",
+      350,
+      420
+    ],
+    [
+      "Bi-214",
+      420,
+      480
+    ],
+    [
+      "background 2",
+      480,
+      540
+    ],
+    [
+      "K-40",
+      540,
+      610
+    ]
+  ],
+  "compatible_models": [
+    "pls",
+    "mlp",
+    "svm"
+  ],
   "model_params": {
     "pls": {
-      "LVmax": 1,
-      "cv": 10
-    },
-    "mlp": {
-      "hidden_layer_sizes": [64, 32],
-      "activation": "tanh",
-      "learning_rate": "adaptive",
-      "max_iter": 10
-    },
-    "svm": {
-      "kernel": "rbf"
+      "LVmax": 1
     }
   }
 }
