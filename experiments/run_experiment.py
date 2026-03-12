@@ -28,7 +28,7 @@ from modeling import pls_optimized, svm_optimized, mlp_optimized
 import smx
 import debugging as dbg
 from config import build_effective_config, load_dataset_config, list_available_datasets
-from synthetic import generate_synthetic_spectral_data
+from smx.datasets.synthetic import generate_synthetic_spectral_data
 
 
 # ── Model dispatch table ─────────────────────────────────────────────────────
