@@ -25,7 +25,7 @@ sys.path.insert(0, str(WORKSPACE_ROOT))
 
 import preprocessings as prepr
 from modeling import pls_optimized, svm_optimized, mlp_optimized
-import smx
+from smx import SMX, reconstruct_threshold_to_spectrum
 import debugging as dbg
 from config import build_effective_config, load_dataset_config, list_available_datasets
 from smx.datasets.synthetic import generate_synthetic_spectral_data
@@ -322,7 +322,7 @@ def save_visualization_data(lrc_natural_df, spectral_zones_original,
             for _, lrc_row in zone_rows.iterrows():
                 thresh_val = float(lrc_row['Threshold_Natural'])
                 node_natural = lrc_row.get('Node_Natural', lrc_row.get('Node', ''))
-                thresh_spectrum = smx.reconstruct_threshold_to_spectrum(
+                thresh_spectrum = reconstruct_threshold_to_spectrum(
                     threshold_value=thresh_val,
                     zone_name=zone_name,
                     pca_info_dict=pca_info_dict_original,
@@ -376,7 +376,7 @@ def build_and_export_figure(lrc_natural_df, spectral_zones_original,
         node_natural = row.get('Node_Natural', row.get('Node', ''))
 
         # Reconstruct threshold spectrum
-        threshold_spectrum = smx.reconstruct_threshold_to_spectrum(
+        threshold_spectrum = reconstruct_threshold_to_spectrum(
             threshold_value=threshold_score,
             zone_name=zone_name,
             pca_info_dict=pca_info_dict_original
@@ -648,7 +648,7 @@ def run_single_experiment(dataset, model_name, method, visualization=False,
 
     if method in ('covariance', 'all'):
         print("\n--- Covariance Pipeline ---")
-        cov_explainer = smx.Explainer(
+        cov_explainer = SMX(
             metric='covariance',
             covariance_threshold=0.01,
             **_base_kwargs,
@@ -670,7 +670,7 @@ def run_single_experiment(dataset, model_name, method, visualization=False,
 
     if method in ('perturbation', 'all'):
         print("\n--- Perturbation Pipeline ---")
-        pert_explainer = smx.Explainer(
+        pert_explainer = SMX(
             metric='perturbation',
             estimator=model,
             perturbation_mode='median',
