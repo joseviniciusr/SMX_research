@@ -1,0 +1,10 @@
+{
+  "separator": ";",
+  "class_column": "Class",
+  "preprocessing": "poisson",
+  "preprocessing_mc": true,
+  "training_aim": "classification",
+  "random_seeds": [0, 1, 2, 3],
+  "seed": 1,
+  "test_size": 0.30
+}
