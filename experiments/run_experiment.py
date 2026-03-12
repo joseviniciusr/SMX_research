@@ -289,7 +289,7 @@ def _run_lrc_pipeline(config, metric_type, zone_scores_df, y_pred, predicates_df
     Returns: (lrc_summed_df, lrc_summed_unique_df, lrc_natural_df,
               spectral_zones_original, pca_info_dict_original)
     """
-    random_seeds = config.get('random_seeds', [0, 1, 2, 3])
+    random_seeds = list(range(config.get('number_of_baggings', 4)))
     training_samples = len(zone_scores_df)
     y_pred_series = pd.Series(y_pred.values) if hasattr(y_pred, 'values') else pd.Series(y_pred)
 

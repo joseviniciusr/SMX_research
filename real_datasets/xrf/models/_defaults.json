@@ -4,7 +4,7 @@
   "preprocessing": "poisson",
   "preprocessing_mc": true,
   "training_aim": "classification",
-  "random_seeds": [0, 1, 2, 3],
+  "number_of_baggings": 4,
   "seed": 1,
   "test_size": 0.30
 }
