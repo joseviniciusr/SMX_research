@@ -29,7 +29,7 @@ if str(WORKSPACE_ROOT) not in sys.path:
 if str(SMX_DIR) not in sys.path:
     sys.path.insert(0, str(SMX_DIR))
 
-from config import load_dataset_config, list_available_datasets
+from config import build_effective_config, load_dataset_config, list_available_datasets
 from run_experiment import load_data, preprocess, train_model, MODEL_CONFIG
 
 # ── SHAP predict-function dispatch ───────────────────────────────────────────
@@ -50,7 +50,7 @@ def run_shap(dataset, model_name, new_only=False):
     print(f"{'#'*70}\n")
 
     # 0. Load config
-    config = load_dataset_config(dataset)
+    config = build_effective_config(dataset, model_name)
 
     # 0a. Skip if output already exists and --new-only was requested
     if new_only:
