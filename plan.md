@@ -99,10 +99,13 @@ SMX/
     │   ├── __init__.py
     │   └── threshold.py         # plot_threshold_spectrum (plotly)
     │
+    ├── pipeline.py              # SMXExplainer: full seed-loop facade (see § 2a)
+    │
     └── tests/
         ├── test_zones.py
         ├── test_predicates.py
-        └── test_graph.py
+        ├── test_graph.py
+        └── test_pipeline.py
 ```
 
 **Design principles for SMX:**
@@ -183,6 +186,75 @@ All of these go into the **SMX** submodule. Source: `smx_temp/explaining.py`.
 | 2.7 | `smx/graph/centrality.py` | `compute_lrc(graph, predicates_df)` and `aggregate_lrc_across_seeds(lrc_by_seed, seeds)`. |
 | 2.8 | `smx/graph/interpretation.py` | `map_thresholds_to_natural`, `reconstruct_threshold_to_spectrum`, `extract_predicate_info` helpers. |
 | 2.9 | `smx/plotting/threshold.py` | `plot_threshold_spectrum` (plotly). Optional dep — guarded import. |
+| 2.10 | `smx/pipeline.py` → `SMXExplainer` | **Facade class** that internalises the full seed-loop orchestration. See § 2a below. |
+
+#### § 2a. Motivation for `SMXExplainer`
+
+After Phase 2.1–2.9, every caller (quickstart, `run_experiment.py`, notebooks) must
+manually repeat the same 5-phase seed loop:
+
+```
+extract zones → aggregate → generate predicates →
+  for seed in seeds:
+    bag → compute metric → build graph → compute LRC →
+    [manually add Class_Predicted boilerplate]
+aggregate across seeds → extract natural zones → aggregate → map thresholds
+```
+
+This is pure orchestration — no caller ever customises *what happens between
+seeds*.  Five concrete pain points drive the need for a facade:
+
+| Pain point | Root cause |
+|---|---|
+| Seed loop boilerplate (~30–80 lines) | No object holds seed-loop state |
+| `Class_Predicted` `np.where` added manually after every bag call | Not owned by any class |
+| `predicates_df` threaded as argument to 3 separate classes | No shared context object |
+| Natural-scale mapping duplicates zone extraction + PCA | No "remember the natural data" owner |
+| Empty-graph guard repeated per seed | No central error handler |
+
+`_run_lrc_pipeline()` in `run_experiment.py` is a hand-written workaround for
+this gap.  That function belongs in the library.
+
+**`SMXExplainer` lives in `smx` (the public library), not only in `smx_research`**,
+because external users face identical boilerplate (as demonstrated in the
+quickstart). `smx_research.SMXPipeline` (Phase 6) then wraps it with
+preprocessing, model training and config loading on top.
+
+**Individual component classes remain unchanged** — `ZoneAggregator`,
+`PredicateGenerator`, etc. are kept as standalone sklearn-compatible objects
+for power users, testing, and advanced composition. `SMXExplainer` is additive.
+
+**API shape:**
+
+```python
+explainer = smx.SMXExplainer(
+    spectral_cuts=spectral_cuts,
+    quantiles=[0.25, 0.50, 0.75],
+    seeds=[0, 1, 2, 3],
+    n_bags=10,
+    n_samples_fraction=0.8,
+    min_samples_fraction=0.2,
+    metric="perturbation",          # "covariance" | "perturbation"
+    # perturbation-only kwargs forwarded to PerturbationMetric:
+    estimator=svm,
+    perturbation_mode="median",
+    normalize_by_zone_size=True,
+    zone_size_exponent=1.0,
+)
+explainer.fit(X_cal_prep, y_pred_cal, X_cal_natural=X_cal)
+
+# Results as attributes (sklearn convention):
+explainer.lrc_natural_        # pd.DataFrame — primary result, natural-scale thresholds
+explainer.lrc_summed_         # pd.DataFrame — aggregated LRC across all seeds
+explainer.zone_scores_        # pd.DataFrame — preprocessed PCA zone scores
+explainer.predicates_df_      # pd.DataFrame — full predicate catalogue
+explainer.pca_info_           # dict — PCA info for preprocessed zones
+explainer.pca_info_natural_   # dict — PCA info for natural zones
+explainer.graphs_by_seed_     # dict[int, nx.DiGraph] — for debugging
+```
+
+The quickstart's §5 (60 lines) collapses to ~12 lines.  `run_experiment.py`'s
+80-line `_run_lrc_pipeline()` is deleted entirely.
 
 ### Phase 3 — Preprocessing as fit/transform classes (SMX_research)
 
@@ -222,10 +294,14 @@ All of these go into the **SMX** submodule. Source: `smx_temp/explaining.py`.
 
 ### Phase 6 — High-level orchestrator (SMX_research)
 
+Phase 6 builds on `smx.SMXExplainer` (Phase 2.10). The research-layer
+`SMXPipeline` is now a thin wrapper that adds config loading, preprocessing and
+model training — the SMX core algorithm is already encapsulated.
+
 | # | Task | Details |
 |---|------|---------|
-| 6.1 | `SMXPipeline` class | Facade in `smx_research` that chains: config → data → preprocessing → model → `smx` core (zones → predicates → bagging → metrics → graph → LRC → interpretation). Exposes `run(dataset, model_name, method)`. |
-| 6.2 | Simplify `run_experiment.py` | Becomes a thin CLI that instantiates `SMXPipeline` + optionally runs `_contrib` debugging. |
+| 6.1 | `smx_research.SMXPipeline` | Facade in `smx_research` that chains: config → data → `PreprocessingPipeline` → model → `smx.SMXExplainer`. Accepts a dataset config dict (or `DatasetConfig`) plus model name. Calls `explainer.fit(X_cal_prep, y_pred_cal, X_cal_natural=X_cal)`. Delegates all algorithm detail to `SMXExplainer`. |
+| 6.2 | Simplify `run_experiment.py` | Delete `_run_lrc_pipeline()` entirely. CLI becomes: build config → `SMXPipeline(config, model).run()` → optionally call `_contrib` debugging utilities. |
 
 ### Phase 7 — Code quality & testing (both repos)
 
@@ -247,6 +323,8 @@ All of these go into the **SMX** submodule. Source: `smx_temp/explaining.py`.
 
 ```
 smx
+ ├── SMXExplainer  (full-pipeline facade: zones → predicates → seed loop → LRC → natural mapping)
+ │    └── internally uses all classes below
  ├── ZoneAggregator  (fit/transform, PCA or simple agg)
  ├── PredicateGenerator
  ├── PredicateBagger
@@ -269,7 +347,7 @@ smx_research
  │    ├── SVMModel  → ModelResult
  │    └── MLPModel  → ModelResult
  ├── SyntheticSpectraGenerator
- └── SMXPipeline  (facade — chains smx_research models + smx core)
+ └── SMXPipeline  (research facade: config + preprocessing + model → smx.SMXExplainer)
 ```
 
 ---
