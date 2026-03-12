@@ -576,14 +576,25 @@ def run_instability(dataset, model_name, seed_number, smx_seed_number,
     1. Stratified random split (controlled by *split_seed*).
     2. Preprocess and train the model (parameters from JSON config).
     3. Collect full performance metrics (identical to ``run_experiment``).
-    4. Run the SMX pipeline on the **training** set with internal bagging
-       seeds ``range(smx_seed_number)``.
-    5. Collect the aggregated LRC predicate ranking.
+    4. Run the SMX pipeline on the **training** set with **progressively
+       growing** subsets of internal bagging seeds.  For
+       ``smx_seed_number = M`` the pipeline is executed ``M`` times per
+       split per LRC method, once for each cumulative subset:
+       ``[0]``, ``[0,1]``, ``[0,1,2]``, … , ``[0,…,M-1]``.
+       The same trained model, PCA aggregation, and predicate catalogue are
+       reused across all internal-seed subsets within the same split —
+       only the bagging / graph / LRC aggregation changes.
+    5. Collect the aggregated LRC predicate ranking for every combination
+       of (split_seed, smx_seeds_used).
 
     All results are concatenated across seeds and saved as two CSV files:
 
-    * ``instability_smx_{dataset_name}.csv`` — predicate rankings per split seed.
-    * ``instability_performance_{dataset_name}.csv`` — model metrics per split seed.
+    * ``instability_smx_{dataset_name}.csv`` — predicate rankings.  Each
+      row carries ``split_seed`` (which data split), ``smx_seeds_used``
+      (how many internal seeds were aggregated, 1 … M), and
+      ``smx_seed_number`` (the configured maximum M).
+    * ``instability_performance_{dataset_name}.csv`` — model metrics per
+      split seed (one entry per split; independent of SMX internal seeds).
 
     Parameters
     ----------
@@ -594,7 +605,8 @@ def run_instability(dataset, model_name, seed_number, smx_seed_number,
     seed_number : int
         Number of global split seeds to evaluate (``0 .. seed_number-1``).
     smx_seed_number : int
-        Number of internal SMX bagging seeds (``0 .. smx_seed_number-1``).
+        Maximum number of internal SMX bagging seeds.  The pipeline runs
+        progressively for ``1, 2, …, smx_seed_number`` internal seeds.
     method : str
         LRC method: ``'perturbation'``, ``'covariance'``, or ``'all'``.
     """
@@ -613,10 +625,6 @@ def run_instability(dataset, model_name, seed_number, smx_seed_number,
     if model_name not in config.get('compatible_models', []):
         print(f"  Model '{model_name}' not compatible with dataset '{dataset}'. Skipping.")
         return
-
-    # Build a config copy with overridden random_seeds for _run_lrc_pipeline
-    config_smx = dict(config)
-    config_smx['random_seeds'] = list(range(smx_seed_number))
 
     # Determine which LRC methods to run
     methods_to_run = []
@@ -642,7 +650,7 @@ def run_instability(dataset, model_name, seed_number, smx_seed_number,
         print("  Preprocessing...")
         Xcal_prep, Xpred_prep, _ = preprocess(config, Xcal, Xpred)
 
-        # ── 3. Train model ───────────────────────────────────────────────
+        # ── 3. Train model (once per split_seed) ────────────────────────
         print(f"  Training {model_name}...")
         result = train_model(model_name, config, Xcal_prep, ycal,
                              Xpred_prep, ypred)
@@ -654,7 +662,7 @@ def run_instability(dataset, model_name, seed_number, smx_seed_number,
         print(f"  Performance (split_seed={split_seed}):")
         print(df_perf.to_string(index=False))
 
-        # ── 5. SMX on training set ───────────────────────────────────────
+        # ── 5. SMX on training set (reuse model for all internal seeds) ──
         mc = MODEL_CONFIG[model_name]
         model = mc['model_extractor'](result)
         y_pred_cont = extract_y_continuous(model_name, result)
@@ -669,24 +677,34 @@ def run_instability(dataset, model_name, seed_number, smx_seed_number,
         pred_gen.fit(zone_scores_df)
         predicates_df = pred_gen.predicates_df_
 
+        # Progressive SMX internal seeds: [0], [0,1], [0,1,2], ...
         for metric_type in methods_to_run:
-            print(f"\n  --- LRC pipeline ({metric_type}) for split_seed={split_seed} ---")
-            try:
-                lrc_summed_df, _, _, _, _ = _run_lrc_pipeline(
-                    config_smx, metric_type, zone_scores_df, y_pred_cont,
-                    predicates_df, pca_info_dict,
-                    Xcal, Xcal_prep, spectral_cuts,
-                    model=model, model_name=model_name,
-                )
-                lrc_out = lrc_summed_df.copy()
-                lrc_out.insert(0, 'split_seed', split_seed)
-                lrc_out['smx_seed_number'] = smx_seed_number
-                lrc_out['method'] = metric_type
-                lrc_out['model'] = model_name
-                all_lrc.append(lrc_out)
-            except RuntimeError as exc:
-                print(f"    WARNING: {exc}")
-                continue
+            for n_smx_seeds in range(1, smx_seed_number + 1):
+                smx_seeds_list = list(range(n_smx_seeds))
+                print(f"\n  --- LRC pipeline ({metric_type}) | "
+                      f"split_seed={split_seed} | "
+                      f"smx_seeds={smx_seeds_list} ---")
+
+                config_iter = dict(config)
+                config_iter['random_seeds'] = smx_seeds_list
+
+                try:
+                    lrc_summed_df, _, _, _, _ = _run_lrc_pipeline(
+                        config_iter, metric_type, zone_scores_df,
+                        y_pred_cont, predicates_df, pca_info_dict,
+                        Xcal, Xcal_prep, spectral_cuts,
+                        model=model, model_name=model_name,
+                    )
+                    lrc_out = lrc_summed_df.copy()
+                    lrc_out.insert(0, 'split_seed', split_seed)
+                    lrc_out['smx_seeds_used'] = n_smx_seeds
+                    lrc_out['smx_seed_number'] = smx_seed_number
+                    lrc_out['method'] = metric_type
+                    lrc_out['model'] = model_name
+                    all_lrc.append(lrc_out)
+                except RuntimeError as exc:
+                    print(f"    WARNING: {exc}")
+                    continue
 
     # ── 6. Export results ────────────────────────────────────────────────
     if all_performance:
