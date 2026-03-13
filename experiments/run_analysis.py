@@ -48,6 +48,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import shap
+from joblib import Parallel, delayed
 from sklearn.metrics import f1_score, accuracy_score
 
 # ── Path setup ───────────────────────────────────────────────────────────────
@@ -150,21 +151,26 @@ def _prediction_fn_for_model(model_name, model):
 
 
 def _permutation_importance_from_model(model_name, model, X,
-                                       n_repeats=10, random_state=42):
+                                       n_repeats=10, random_state=42,
+                                       n_jobs=-1):
     """Compute permutation importance per energy using an already-fitted model."""
-    rng = np.random.RandomState(random_state)
     predict_fn = _prediction_fn_for_model(model_name, model)
     baseline_pred = predict_fn(X)
+    X_values = X.values  # avoid repeated DataFrame overhead
 
-    importance_list = []
-    for col in X.columns:
-        diffs = []
-        for _ in range(n_repeats):
-            X_perm = X.copy()
-            X_perm[col] = rng.permutation(X_perm[col].values)
-            perm_pred = predict_fn(X_perm)
-            diffs.append(np.mean(np.abs(baseline_pred - perm_pred)))
-        importance_list.append(float(np.mean(diffs)))
+    def _importance_for_col(col_idx, col_name):
+        rng = np.random.RandomState(random_state + col_idx)
+        diffs = np.empty(n_repeats)
+        for r in range(n_repeats):
+            X_perm = X_values.copy()
+            X_perm[:, col_idx] = rng.permutation(X_perm[:, col_idx])
+            perm_pred = predict_fn(pd.DataFrame(X_perm, columns=X.columns))
+            diffs[r] = np.mean(np.abs(baseline_pred - perm_pred))
+        return float(diffs.mean())
+
+    importance_list = Parallel(n_jobs=n_jobs)(
+        delayed(_importance_for_col)(i, c) for i, c in enumerate(X.columns)
+    )
 
     return pd.DataFrame({
         'energy': X.columns,
@@ -579,16 +585,39 @@ def run_faithfulness(dataset, model_name, mask_mode='zero', method='all'):
     print(f"  Baseline — F1: {f1_orig:.4f}, Accuracy: {acc_orig:.4f}")
 
     # ── 5. Progressive masking ──────────────────────────────────────────
+    # Pre-compute zone→columns mapping and mask values once
+    _zone_cols_cache = {}
+    for cut in spectral_cuts:
+        zname = cut[0]
+        _zone_cols_cache[zname] = _get_zone_columns(
+            zname, spectral_cuts, Xpredclass_prep.columns,
+        )
+    if mask_mode == 'zero':
+        _mask_values = {z: 0.0 for z in _zone_cols_cache}
+    elif mask_mode == 'median':
+        _mask_values = {
+            z: Xcalclass_prep[cols].median().values
+            for z, cols in _zone_cols_cache.items() if cols
+        }
+    elif mask_mode == 'mean':
+        _mask_values = {
+            z: Xcalclass_prep[cols].mean().values
+            for z, cols in _zone_cols_cache.items() if cols
+        }
+    else:
+        raise ValueError(f"Unknown mask_mode: '{mask_mode}'")
+
     rows = []
     for method_label, zone_list in rankings.items():
         n_zones = len(zone_list)
         print(f"\n  [{method_label}] {n_zones} zones: {zone_list}")
+        # Start from a copy and incrementally mask one more zone each step
+        X_masked = Xpredclass_prep.copy()
         for k in range(1, n_zones + 1):
-            top_k_zones = zone_list[:k]
-            X_masked = _mask_zones(
-                Xpredclass_prep, top_k_zones, spectral_cuts,
-                mask_mode, Xcal_prep=Xcalclass_prep,
-            )
+            new_zone = zone_list[k - 1]
+            cols = _zone_cols_cache.get(new_zone, [])
+            if cols:
+                X_masked[cols] = _mask_values.get(new_zone, 0.0)
             y_hat_masked = _predict_classes(model_name, model, X_masked)
             f1_masked = f1_score(ypred_numeric, y_hat_masked,
                                  average='weighted', zero_division=0)
@@ -620,12 +649,12 @@ def run_faithfulness(dataset, model_name, mask_mode='zero', method='all'):
                 'acc_masked': round(acc_masked, 6),
                 'acc_drop': round(acc_orig - acc_masked, 6),
                 cont_metric_name: round(cont_metric_val, 6),
-                'zones_removed': '; '.join(top_k_zones),
+                'zones_removed': '; '.join(zone_list[:k]),
             })
             print(f"    k={k:2d}  F1_drop={f1_orig - f1_masked:+.4f}  "
                   f"ACC_drop={acc_orig - acc_masked:+.4f}  "
                   f"{cont_metric_name}={cont_metric_val:.4f}  "
-                  f"removed={top_k_zones}")
+                  f"removed={zone_list[:k]}")
 
     # ── 6. Export results ────────────────────────────────────────────────
     df_faith = pd.DataFrame(rows)
@@ -639,29 +668,17 @@ def run_faithfulness(dataset, model_name, mask_mode='zero', method='all'):
 # Instability (stability) evaluation
 # ═══════════════════════════════════════════════════════════════════════════════
 
-def _load_data_stratified(config, split_seed):
-    """Load dataset and split via stratified random sampling.
-
-    Unlike :func:`run_experiment.load_data` which uses Kennard-Stone, this
-    function uses ``sklearn.model_selection.train_test_split`` with
-    ``stratify`` to preserve class proportions, controlled by *split_seed*.
-
-    Parameters
-    ----------
-    config : dict
-        Dataset JSON configuration.
-    split_seed : int
-        Random state for the stratified split.
+def _load_full_data(config):
+    """Load the full dataset (X, y) without splitting.
 
     Returns
     -------
-    Xcal, Xpred : pd.DataFrame
-        Spectral features for calibration and prediction sets.
-    ycal, ypred : pd.Series
-        Class labels for calibration and prediction sets.
+    X_all : pd.DataFrame
+        All spectral features.
+    y_all : pd.Series
+        All class labels.
     """
     class_col = config.get('class_column', 'Class')
-    test_size = config.get('test_size', 0.30)
 
     if config.get('is_synthetic'):
         syn_cfg = config['synthetic_config']
@@ -686,6 +703,29 @@ def _load_data_stratified(config, split_seed):
         X_all = data_complete.loc[:, start_col:end_col]
 
     y_all = data_complete[class_col]
+    return X_all, y_all
+
+
+def _split_data_stratified(X_all, y_all, config, split_seed):
+    """Stratified train/test split from pre-loaded data.
+
+    Parameters
+    ----------
+    X_all, y_all : pd.DataFrame, pd.Series
+        Full dataset (from :func:`_load_full_data`).
+    config : dict
+        Dataset JSON configuration.
+    split_seed : int
+        Random state for the stratified split.
+
+    Returns
+    -------
+    Xcal, Xpred : pd.DataFrame
+        Spectral features for calibration and prediction sets.
+    ycal, ypred : pd.Series
+        Class labels for calibration and prediction sets.
+    """
+    test_size = config.get('test_size', 0.30)
 
     Xcal, Xpred, ycal, ypred = sklearn_train_test_split(
         X_all, y_all,
@@ -700,6 +740,17 @@ def _load_data_stratified(config, split_seed):
     ypred = ypred.reset_index(drop=True)
 
     return Xcal, Xpred, ycal, ypred
+
+
+def _load_data_stratified(config, split_seed):
+    """Load dataset and split via stratified random sampling.
+
+    Convenience wrapper that loads and splits in one call.
+    Prefer :func:`_load_full_data` + :func:`_split_data_stratified`
+    when calling in a loop to avoid re-reading the CSV each time.
+    """
+    X_all, y_all = _load_full_data(config)
+    return _split_data_stratified(X_all, y_all, config, split_seed)
 
 
 def run_instability(dataset, model_name, seed_number, smx_seed_number,
@@ -782,14 +833,20 @@ def run_instability(dataset, model_name, seed_number, smx_seed_number,
     all_performance = []
     all_method_outputs = {m: [] for m in selected_methods}
 
+    # ── Load dataset once, split inside the loop ─────────────────────────
+    print("  Loading full dataset (once)...")
+    X_all, y_all = _load_full_data(config)
+
     for split_seed in range(seed_number):
         print(f"\n{'='*70}")
         print(f"  Split seed {split_seed}/{seed_number - 1}")
         print(f"{'='*70}\n")
 
         # ── 1. Stratified split ──────────────────────────────────────────
-        print("  Loading data (stratified split)...")
-        Xcal, Xpred, ycal, ypred = _load_data_stratified(config, split_seed)
+        print("  Splitting data (stratified)...")
+        Xcal, Xpred, ycal, ypred = _split_data_stratified(
+            X_all, y_all, config, split_seed,
+        )
         print(f"    Xcal: {Xcal.shape}, Xpred: {Xpred.shape}")
 
         # ── 2. Preprocess ────────────────────────────────────────────────
