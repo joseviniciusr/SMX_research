@@ -33,7 +33,7 @@ Usage:
     # Instability evaluation (vary split seed, extract SMX rankings per seed)
     python experiments/run_analysis.py --instability --dataset soil --model mlp --seed_number 5 --smx_seed_number 4
     python experiments/run_analysis.py --instability --dataset bank_notes --model pls --seed_number 20 --smx_seed_number 4
-    python experiments/run_analysis.py --instability --dataset all --model all --seed_number 10 --smx_seed_number 3 --method perturbation
+    python experiments/run_analysis.py --instability --dataset all --model all --seed_number 10 --smx_seed_number 3 --method smx_perturbation
 """
 
 import argparse
@@ -44,6 +44,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import shap
 from sklearn.metrics import f1_score, accuracy_score
 
 # ── Path setup ───────────────────────────────────────────────────────────────
@@ -102,6 +103,103 @@ def _zone_ranking_from_zone_csv(csv_path, zone_column='Zone'):
     return list(df[zone_column])
 
 
+# ── Instability method helpers ───────────────────────────────────────────────
+
+INSTABILITY_METHOD_ORDER = [
+    'smx_perturbation',
+    'smx_covariance',
+    'shap',
+    'permutation',
+]
+
+
+def _normalize_instability_methods(method_selection):
+    """Normalize method selection to canonical instability method names."""
+    if isinstance(method_selection, str):
+        requested = [method_selection]
+    else:
+        requested = list(method_selection)
+
+    normalized = []
+    for m in requested:
+        if m == 'all':
+            return list(INSTABILITY_METHOD_ORDER)
+        if m in INSTABILITY_METHOD_ORDER and m not in normalized:
+            normalized.append(m)
+
+    return normalized
+
+
+def _normalize_smx_lrc_methods(method_selection):
+    """Normalize selection to the SMX LRC subset used by RBO/Faithfulness."""
+    normalized = _normalize_instability_methods(method_selection)
+    return [
+        m for m in normalized
+        if m in ('smx_perturbation', 'smx_covariance')
+    ]
+
+
+def _prediction_fn_for_model(model_name, model):
+    """Return prediction function used by SHAP/Permutation for each model."""
+    if model_name == 'pls':
+        return model.predict
+    return lambda X: model.predict_proba(X)[:, 1]
+
+
+def _permutation_importance_from_model(model_name, model, X,
+                                       n_repeats=10, random_state=42):
+    """Compute permutation importance per energy using an already-fitted model."""
+    rng = np.random.RandomState(random_state)
+    predict_fn = _prediction_fn_for_model(model_name, model)
+    baseline_pred = predict_fn(X)
+
+    importance_list = []
+    for col in X.columns:
+        diffs = []
+        for _ in range(n_repeats):
+            X_perm = X.copy()
+            X_perm[col] = rng.permutation(X_perm[col].values)
+            perm_pred = predict_fn(X_perm)
+            diffs.append(np.mean(np.abs(baseline_pred - perm_pred)))
+        importance_list.append(float(np.mean(diffs)))
+
+    return pd.DataFrame({
+        'energy': X.columns,
+        'Permutation_importance': importance_list,
+    }).sort_values('Permutation_importance', ascending=False).reset_index(drop=True)
+
+
+def _shap_importance_from_model(model_name, model, X):
+    """Compute SHAP global importance per energy using an already-fitted model."""
+    predict_fn = _prediction_fn_for_model(model_name, model)
+    explainer = shap.KernelExplainer(predict_fn, X, njobs=20)
+    shap_explanation = explainer(X)
+
+    vals = np.abs(shap_explanation.values)
+    if vals.ndim == 3:
+        score = vals.mean(axis=(0, 2))
+    else:
+        score = vals.mean(axis=0)
+
+    return pd.DataFrame({
+        'energy': X.columns,
+        'Mean_Abs_SHAP': score,
+    }).sort_values('Mean_Abs_SHAP', ascending=False).reset_index(drop=True)
+
+
+def _format_instability_energy_output(df_importance, score_col, spectral_cuts,
+                                      split_seed, model_name, method_name):
+    """Attach metadata and zone mapping while keeping all sorted energies."""
+    out = df_importance.copy()
+    out['Zone'] = out['energy'].map(dbg._map_energy_to_zone(out['energy'], spectral_cuts))
+    out = out.sort_values(score_col, ascending=False).reset_index(drop=True)
+    out.insert(0, 'split_seed', split_seed)
+    out.insert(1, 'method', method_name)
+    out.insert(2, 'model', model_name)
+    out.insert(3, 'rank', np.arange(1, len(out) + 1))
+    return out
+
+
 # ── Analysis routines ────────────────────────────────────────────────────────
 
 # Canonical column order per model type
@@ -128,8 +226,9 @@ def build_feature_importance_table(model_name, output_dir, dataset_name,
         config['name'] value, used to locate technique CSVs.
     spectral_cuts : list of tuples
         Each tuple is (zone_name, start, end).
-    method : str
-        Which LRC methods to include: 'covariance', 'perturbation', or 'all'.
+    method : str | list[str]
+        Method selection using canonical names:
+        'smx_perturbation', 'smx_covariance', 'shap', 'permutation', or 'all'.
 
     Returns
     -------
@@ -137,14 +236,15 @@ def build_feature_importance_table(model_name, output_dir, dataset_name,
         Feature importance table with one column per available technique.
     """
     zone_lists = {}
+    smx_lrc_methods = _normalize_smx_lrc_methods(method)
 
     # LRC results
-    if method in ('covariance', 'all'):
+    if 'smx_covariance' in smx_lrc_methods:
         cov_path = output_dir / 'lrc_cov_natural.csv'
         if cov_path.exists():
             zone_lists['LRC_covariance'] = _zone_ranking_from_lrc(cov_path)
 
-    if method in ('perturbation', 'all'):
+    if 'smx_perturbation' in smx_lrc_methods:
         pert_path = output_dir / 'lrc_pert_natural.csv'
         if pert_path.exists():
             zone_lists['LRC_perturbation'] = _zone_ranking_from_lrc(pert_path)
@@ -274,7 +374,7 @@ def _get_zone_columns(zone_name, spectral_cuts, all_columns):
 
 
 def _collect_zone_rankings(output_dir, dataset_name, spectral_cuts,
-                           model_name, method='perturbation'):
+                           model_name, method='all'):
     """Read pre-computed ranking CSVs and return a dict of zone rankings.
 
     Returns ``{method_label: [zone_name_rank1, zone_name_rank2, ...]}``.
@@ -283,14 +383,15 @@ def _collect_zone_rankings(output_dir, dataset_name, spectral_cuts,
     """
     rankings = {}
 
+    smx_lrc_methods = _normalize_smx_lrc_methods(method)
+
     # SMX (LRC perturbation / covariance)
-    if method in ('perturbation', 'all'):
+    if 'smx_perturbation' in smx_lrc_methods:
         lrc_path = output_dir / 'lrc_pert_natural.csv'
         if lrc_path.exists():
-            key = 'SMX' if method != 'all' else 'SMX_perturbation'
-            rankings[key] = _zone_ranking_from_lrc(lrc_path)
+            rankings['SMX_perturbation'] = _zone_ranking_from_lrc(lrc_path)
 
-    if method in ('covariance', 'all'):
+    if 'smx_covariance' in smx_lrc_methods:
         lrc_cov_path = output_dir / 'lrc_cov_natural.csv'
         if lrc_cov_path.exists():
             rankings['SMX_covariance'] = _zone_ranking_from_lrc(lrc_cov_path)
@@ -385,7 +486,7 @@ def _predict_classes(model_name, model, X):
     return y_bin
 
 
-def run_faithfulness(dataset, model_name, mask_mode='zero', method='perturbation'):
+def run_faithfulness(dataset, model_name, mask_mode='zero', method='all'):
     """Run faithfulness evaluation for a single (dataset, model) combination.
 
     For every available XAI method, progressively mask top-k zones and
@@ -403,9 +504,10 @@ def run_faithfulness(dataset, model_name, mask_mode='zero', method='perturbation
         One of ``'pls'``, ``'mlp'``, ``'svm'``.
     mask_mode : str
         Masking strategy: ``'zero'``, ``'median'``, or ``'mean'``.
-    method : str
-        Which LRC method to include: ``'covariance'``, ``'perturbation' (default)``,
-        or ``'all'``.
+    method : str | list[str]
+        Method selection using canonical names:
+        ``'smx_perturbation'``, ``'smx_covariance'``, ``'shap'``,
+        ``'permutation'``, or ``'all'``.
     """
     print(f"\n{'#'*70}")
     print(f"# Faithfulness: dataset={dataset}, model={model_name}, mask={mask_mode}")
@@ -598,7 +700,7 @@ def _load_data_stratified(config, split_seed):
 
 
 def run_instability(dataset, model_name, seed_number, smx_seed_number,
-                    method='perturbation'):
+                    method='all'):
     """Run instability (stability) evaluation for a (dataset, model) pair.
 
     For each *split_seed* in ``range(seed_number)``:
@@ -641,8 +743,9 @@ def run_instability(dataset, model_name, seed_number, smx_seed_number,
     smx_seed_number : int
         Maximum number of internal SMX bagging seeds.  The pipeline runs
         progressively for ``1, 2, …, smx_seed_number`` internal seeds.
-    method : str
-        LRC method: ``'perturbation'``, ``'covariance'``, or ``'all'``.
+    method : str | list[str]
+        Instability method(s): ``'smx_perturbation'``, ``'smx_covariance'``,
+        ``'shap'``, ``'permutation'``, or ``'all'``.
     """
     print(f"\n{'#'*70}")
     print(f"# Instability: dataset={dataset}, model={model_name}, "
@@ -662,15 +765,19 @@ def run_instability(dataset, model_name, seed_number, smx_seed_number,
         print(f"  Model '{model_name}' not compatible with dataset '{dataset}'. Skipping.")
         return
 
-    # Determine which LRC methods to run
-    methods_to_run = []
-    if method in ('perturbation', 'all'):
-        methods_to_run.append('perturbation')
-    if method in ('covariance', 'all'):
-        methods_to_run.append('covariance')
+    selected_methods = _normalize_instability_methods(method)
+    if not selected_methods:
+        print("  No valid instability methods selected. Skipping.")
+        return
+
+    smx_methods_to_run = []
+    if 'smx_perturbation' in selected_methods:
+        smx_methods_to_run.append(('smx_perturbation', 'perturbation'))
+    if 'smx_covariance' in selected_methods:
+        smx_methods_to_run.append(('smx_covariance', 'covariance'))
 
     all_performance = []
-    all_lrc = []
+    all_method_outputs = {m: [] for m in selected_methods}
 
     for split_seed in range(seed_number):
         print(f"\n{'='*70}")
@@ -698,59 +805,87 @@ def run_instability(dataset, model_name, seed_number, smx_seed_number,
         print(f"  Performance (split_seed={split_seed}):")
         print(df_perf.to_string(index=False))
 
-        # ── 5. SMX on training set (reuse model for all internal seeds) ──
+        # ── 5. Explanations on training set (reuse same model per split) ──
         mc = MODEL_CONFIG[model_name]
         model = mc['model_extractor'](result)
-        y_pred_cont = extract_y_continuous(model_name, result)
 
-        # Common SMX kwargs shared across all metric types and seed subsets
-        _base_kwargs = dict(
-            spectral_cuts=spectral_cuts,
-            quantiles=[0.2, 0.4, 0.6, 0.8],
-            n_bags=10,
-            n_samples_fraction=0.8,
-            min_samples_fraction=0.2,
-            var_exp=True,
-        )
+        if smx_methods_to_run:
+            y_pred_cont = extract_y_continuous(model_name, result)
 
-        # Progressive SMX internal seeds: [0], [0,1], [0,1,2], ...
-        for metric_type in methods_to_run:
-            for n_smx_seeds in range(1, smx_seed_number + 1):
-                smx_seeds_list = list(range(n_smx_seeds))
-                print(f"\n  --- SMX pipeline ({metric_type}) | "
-                      f"split_seed={split_seed} | "
-                      f"smx_seeds={smx_seeds_list} ---")
+            # Common SMX kwargs shared across all metric types and seed subsets
+            _base_kwargs = dict(
+                spectral_cuts=spectral_cuts,
+                quantiles=[0.2, 0.4, 0.6, 0.8],
+                n_bags=10,
+                n_samples_fraction=0.8,
+                min_samples_fraction=0.2,
+                var_exp=True,
+            )
 
-                _iter_kwargs = dict(_base_kwargs, seeds=smx_seeds_list)
+            # Progressive SMX internal seeds: [0], [0,1], [0,1,2], ...
+            for method_label, metric_type in smx_methods_to_run:
+                for n_smx_seeds in range(1, smx_seed_number + 1):
+                    smx_seeds_list = list(range(n_smx_seeds))
+                    print(f"\n  --- SMX pipeline ({method_label}) | "
+                          f"split_seed={split_seed} | "
+                          f"smx_seeds={smx_seeds_list} ---")
 
-                if metric_type == 'covariance':
-                    _iter_kwargs.update(
-                        metric='covariance',
-                        covariance_threshold=0.01,
-                    )
-                else:
-                    _iter_kwargs.update(
-                        metric='perturbation',
-                        estimator=model,
-                        perturbation_mode='median',
-                        perturbation_metric=mc['perturbation_metric'],
-                        normalize_by_zone_size=True,
-                        zone_size_exponent=1.0,
-                    )
+                    _iter_kwargs = dict(_base_kwargs, seeds=smx_seeds_list)
 
-                try:
-                    explainer = SMX(**_iter_kwargs)
-                    explainer.fit(Xcal_prep, y_pred_cont, X_cal_natural=Xcal)
-                    lrc_out = explainer.lrc_summed_.copy()
-                    lrc_out.insert(0, 'split_seed', split_seed)
-                    lrc_out['smx_seeds_used'] = n_smx_seeds
-                    lrc_out['smx_seed_number'] = smx_seed_number
-                    lrc_out['method'] = metric_type
-                    lrc_out['model'] = model_name
-                    all_lrc.append(lrc_out)
-                except RuntimeError as exc:
-                    print(f"    WARNING: {exc}")
-                    continue
+                    if metric_type == 'covariance':
+                        _iter_kwargs.update(
+                            metric='covariance',
+                            covariance_threshold=0.01,
+                        )
+                    else:
+                        _iter_kwargs.update(
+                            metric='perturbation',
+                            estimator=model,
+                            perturbation_mode='median',
+                            perturbation_metric=mc['perturbation_metric'],
+                            normalize_by_zone_size=True,
+                            zone_size_exponent=1.0,
+                        )
+
+                    try:
+                        explainer = SMX(**_iter_kwargs)
+                        explainer.fit(Xcal_prep, y_pred_cont, X_cal_natural=Xcal)
+                        lrc_out = explainer.lrc_summed_.copy()
+                        lrc_out.insert(0, 'split_seed', split_seed)
+                        lrc_out['smx_seeds_used'] = n_smx_seeds
+                        lrc_out['smx_seed_number'] = smx_seed_number
+                        lrc_out['method'] = method_label
+                        lrc_out['model'] = model_name
+                        all_method_outputs[method_label].append(lrc_out)
+                    except RuntimeError as exc:
+                        print(f"    WARNING: {exc}")
+                        continue
+
+        if 'shap' in selected_methods:
+            print(f"\n  --- SHAP explanation | split_seed={split_seed} ---")
+            shap_df = _shap_importance_from_model(model_name, model, Xcal_prep)
+            shap_out = _format_instability_energy_output(
+                shap_df,
+                score_col='Mean_Abs_SHAP',
+                spectral_cuts=spectral_cuts,
+                split_seed=split_seed,
+                model_name=model_name,
+                method_name='shap',
+            )
+            all_method_outputs['shap'].append(shap_out)
+
+        if 'permutation' in selected_methods:
+            print(f"\n  --- Permutation explanation | split_seed={split_seed} ---")
+            perm_df = _permutation_importance_from_model(model_name, model, Xcal_prep)
+            perm_out = _format_instability_energy_output(
+                perm_df,
+                score_col='Permutation_importance',
+                spectral_cuts=spectral_cuts,
+                split_seed=split_seed,
+                model_name=model_name,
+                method_name='permutation',
+            )
+            all_method_outputs['permutation'].append(perm_out)
 
     # ── 6. Export results ────────────────────────────────────────────────
     if all_performance:
@@ -762,14 +897,16 @@ def run_instability(dataset, model_name, seed_number, smx_seed_number,
     else:
         print("\n  No performance results collected.")
 
-    if all_lrc:
-        df_lrc_all = pd.concat(all_lrc, ignore_index=True)
-        lrc_path = output_dir / f'instability_smx_{dataset_name}.csv'
-        df_lrc_all.to_csv(lrc_path, index=False, sep=';')
-        print(f"\n  SMX instability rankings saved to {lrc_path}")
-        print(df_lrc_all)
-    else:
-        print("\n  No SMX ranking results collected.")
+    for method_name in selected_methods:
+        rows = all_method_outputs.get(method_name, [])
+        if not rows:
+            print(f"\n  No results collected for method '{method_name}'.")
+            continue
+        df_method_all = pd.concat(rows, ignore_index=True)
+        method_path = output_dir / f'instability_{method_name}_{dataset_name}.csv'
+        df_method_all.to_csv(method_path, index=False, sep=';')
+        print(f"\n  Instability results saved to {method_path}")
+        print(df_method_all)
 
 
 # ── CLI ──────────────────────────────────────────────────────────────────────
@@ -795,8 +932,8 @@ Examples:
   # Instability: 5 global split seeds, 4 internal SMX bagging seeds
   python experiments/run_analysis.py --instability --dataset soil --model mlp --seed_number 5 --smx_seed_number 4
 
-  # Instability: 20 global seeds, 4 SMX seeds, perturbation only
-  python experiments/run_analysis.py --instability --dataset bank_notes --model pls --seed_number 20 --smx_seed_number 4 --method perturbation
+    # Instability: 20 global seeds, selected methods
+    python experiments/run_analysis.py --instability --dataset bank_notes --model pls --seed_number 20 --smx_seed_number 4 --method smx_perturbation shap permutation
 
   # Instability for all datasets and all models
   python experiments/run_analysis.py --instability --dataset all --model all --seed_number 10 --smx_seed_number 3
@@ -807,9 +944,10 @@ Examples:
     parser.add_argument('--model', required=True,
                         choices=['pls', 'mlp', 'svm', 'all'],
                         help='Model type or "all"')
-    parser.add_argument('--method', default='all',
-                        choices=['covariance', 'perturbation', 'all'],
-                        help='Which LRC method(s) to include')
+    parser.add_argument('--method', nargs='+', default=['all'],
+                        choices=['smx_perturbation', 'smx_covariance',
+                                 'shap', 'permutation', 'all'],
+                        help='Methods to include. Accepts one or more values.')
     parser.add_argument('--rbo', action='store_true',
                         help='Build feature_importance.csv and rbo_rank.csv')
     parser.add_argument('--faithfulness', action='store_true',
