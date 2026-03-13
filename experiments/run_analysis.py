@@ -54,7 +54,7 @@ if str(WORKSPACE_ROOT) not in sys.path:
 
 from sklearn.model_selection import train_test_split as sklearn_train_test_split
 
-from config import build_effective_config, load_dataset_config, list_available_datasets
+from config import build_effective_config, list_available_datasets
 import debugging as dbg
 import smx
 from smx import SMX
@@ -650,7 +650,9 @@ def run_instability(dataset, model_name, seed_number, smx_seed_number,
     print(f"{'#'*70}\n")
 
     # ── 0. Load config & validate ────────────────────────────────────────
-    config = load_dataset_config(dataset)
+    # Use the same merged config logic as other analyses so model defaults
+    # (e.g., real_datasets/xrf/models/svm.json) are always available.
+    config = build_effective_config(dataset, model_name)
     dataset_name = config['name']
     spectral_cuts = [tuple(sc) for sc in config['spectral_cuts']]
     output_dir = SCRIPT_DIR / model_name.upper() / dataset
