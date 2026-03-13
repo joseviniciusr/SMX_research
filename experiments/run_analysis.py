@@ -753,8 +753,191 @@ def _load_data_stratified(config, split_seed):
     return _split_data_stratified(X_all, y_all, config, split_seed)
 
 
+def _instability_one_seed(
+    split_seed, seed_number, X_all, y_all, config, model_name,
+    spectral_cuts, smx_seed_number, smx_methods_to_run, selected_methods,
+):
+    """Run instability evaluation for a single split seed.
+
+    Returns (df_perf, method_outputs_dict) where method_outputs_dict maps
+    each method name to a list of DataFrames produced for this seed.
+    """
+    print(f"\n{'='*70}")
+    print(f"  Split seed {split_seed}/{seed_number - 1}")
+    print(f"{'='*70}\n")
+
+    method_outputs = {m: [] for m in selected_methods}
+
+    # ── 1. Stratified split ──────────────────────────────────────────
+    print("  Splitting data (stratified)...")
+    Xcal, Xpred, ycal, ypred = _split_data_stratified(
+        X_all, y_all, config, split_seed,
+    )
+    print(f"    Xcal: {Xcal.shape}, Xpred: {Xpred.shape}")
+
+    # ── 2. Preprocess ────────────────────────────────────────────────
+    print("  Preprocessing...")
+    Xcal_prep, Xpred_prep, _ = preprocess(config, Xcal, Xpred)
+
+    # ── 3. Train model (once per split_seed) ────────────────────────
+    print(f"  Training {model_name}...")
+    result = train_model(model_name, config, Xcal_prep, ycal,
+                         Xpred_prep, ypred)
+
+    # ── 4. Collect performance metrics ───────────────────────────────
+    df_perf = result[0].copy()
+    df_perf.insert(0, 'split_seed', split_seed)
+    print(f"  Performance (split_seed={split_seed}):")
+    print(df_perf.to_string(index=False))
+
+    # ── 5. Explanations on training set (reuse same model per split) ──
+    mc = MODEL_CONFIG[model_name]
+    model = mc['model_extractor'](result)
+
+    if smx_methods_to_run:
+        y_pred_cont = extract_y_continuous(model_name, result)
+        y_pred_series = (
+            pd.Series(y_pred_cont.values)
+            if isinstance(y_pred_cont, pd.Series)
+            else pd.Series(y_pred_cont)
+        )
+
+        n_cal = len(Xcal_prep)
+        n_samples_per_bag = max(1, int(n_cal * 0.8))
+        min_samples_per_predicate = max(1, int(n_cal * 0.2))
+
+        # ── Deterministic steps (once per split_seed) ────────────
+        zones_prep = smx.extract_spectral_zones(Xcal_prep, spectral_cuts)
+        aggregator = smx.ZoneAggregator(method='pca')
+        zone_scores = aggregator.fit_transform(zones_prep)
+        pca_info = aggregator.pca_info_
+
+        gen = smx.PredicateGenerator(quantiles=[0.2, 0.4, 0.6, 0.8])
+        gen.fit(zone_scores)
+        predicates_df = gen.predicates_df_
+
+        # ── Incremental seed loop per method ─────────────────────
+        for method_label, metric_type in smx_methods_to_run:
+            metric_column = ('Covariance' if metric_type == 'covariance'
+                            else 'Perturbation')
+
+            # Build per-seed LRC results incrementally
+            lrc_by_seed = {}
+            for seed_idx in range(smx_seed_number):
+                print(f"\n  --- SMX ({method_label}) | "
+                      f"split_seed={split_seed} | "
+                      f"computing seed {seed_idx} ---")
+
+                # Bagging
+                bagger = smx.PredicateBagger(
+                    n_bags=10,
+                    n_samples_per_bag=n_samples_per_bag,
+                    min_samples_per_predicate=min_samples_per_predicate,
+                    replace=False,
+                    sample_bagging=True,
+                    predicate_bagging=False,
+                    random_seed=seed_idx,
+                )
+                bags = bagger.run(zone_scores, y_pred_series, predicates_df)
+
+                for pred_dict in bags.values():
+                    for df_info in pred_dict.values():
+                        df_info['Class_Predicted'] = np.where(
+                            df_info['Predicted_Y'] >= 0.5, 'A', 'B'
+                        )
+
+                # Metric
+                if metric_type == 'covariance':
+                    metric_obj = smx.CovarianceMetric(
+                        metric='covariance', threshold=0.01,
+                    )
+                else:
+                    metric_obj = smx.PerturbationMetric(
+                        estimator=model,
+                        Xcalclass_prep=Xcal_prep,
+                        predicates_df=predicates_df,
+                        spectral_cuts=spectral_cuts,
+                        perturbation_mode='median',
+                        stats_source='full',
+                        metric=mc['perturbation_metric'],
+                        normalize_by_zone_size=True,
+                        zone_size_exponent=1.0,
+                    )
+                rankings = metric_obj.compute(bags)
+
+                # Graph
+                builder = smx.PredicateGraphBuilder(
+                    random_state=seed_idx,
+                    show_details=False,
+                    var_exp=True,
+                    pca_info_dict=pca_info,
+                )
+                graph = builder.build(
+                    bags, rankings, metric_column=metric_column,
+                )
+
+                # LRC
+                predicate_nodes = [
+                    n for n, attr in graph.nodes(data=True)
+                    if attr.get('node_type') == 'predicate'
+                ]
+                if not predicate_nodes:
+                    print(f"    WARNING: Seed {seed_idx} produced "
+                          f"empty graph — skipping.")
+                    continue
+
+                lrc_df_seed = smx.compute_lrc(graph, predicates_df)
+                lrc_df_seed['Seed'] = seed_idx
+                lrc_by_seed[seed_idx] = lrc_df_seed
+
+                # Progressive aggregation: use all seeds computed so far
+                valid_seeds = list(lrc_by_seed.keys())
+                n_smx_seeds = seed_idx + 1
+                lrc_summed, _ = smx.aggregate_lrc_across_seeds(
+                    lrc_by_seed, valid_seeds,
+                )
+
+                print(f"    Aggregated smx_seeds={list(range(n_smx_seeds))}")
+
+                lrc_out = lrc_summed.copy()
+                lrc_out.insert(0, 'split_seed', split_seed)
+                lrc_out['smx_seeds_used'] = n_smx_seeds
+                lrc_out['smx_seed_number'] = smx_seed_number
+                lrc_out['method'] = method_label
+                lrc_out['model'] = model_name
+                method_outputs[method_label].append(lrc_out)
+
+    if 'shap' in selected_methods:
+        print(f"\n  --- SHAP explanation | split_seed={split_seed} ---")
+        shap_df = _shap_importance_from_model(model_name, model, Xcal_prep)
+        shap_out = _format_instability_energy_output(
+            shap_df,
+            score_col='Mean_Abs_SHAP',
+            spectral_cuts=spectral_cuts,
+            split_seed=split_seed,
+            model_name=model_name,
+            method_name='shap',
+        )
+        method_outputs['shap'].append(shap_out)
+
+    if 'permutation' in selected_methods:
+        print(f"\n  --- Permutation explanation | split_seed={split_seed} ---")
+        perm_df = _permutation_importance_from_model(model_name, model, Xcal_prep)
+        perm_out = _format_instability_energy_output(
+            perm_df,
+            score_col='Permutation_importance',
+            spectral_cuts=spectral_cuts,
+            split_seed=split_seed,
+            model_name=model_name,
+            method_name='permutation',
+        )
+        method_outputs['permutation'].append(perm_out)
+
+    return df_perf, method_outputs
+
+
 def run_instability(dataset, model_name, seed_number, smx_seed_number,
-                    method='all'):
+                    method='all', n_jobs=1):
     """Run instability (stability) evaluation for a (dataset, model) pair.
 
     For each *split_seed* in ``range(seed_number)``:
@@ -800,6 +983,9 @@ def run_instability(dataset, model_name, seed_number, smx_seed_number,
     method : str | list[str]
         Instability method(s): ``'smx_perturbation'``, ``'smx_covariance'``,
         ``'shap'``, ``'permutation'``, or ``'all'``.
+    n_jobs : int
+        Number of parallel workers for split seeds (default: 1).
+        Use ``-1`` for all available cores.
     """
     print(f"\n{'#'*70}")
     print(f"# Instability: dataset={dataset}, model={model_name}, "
@@ -837,176 +1023,23 @@ def run_instability(dataset, model_name, seed_number, smx_seed_number,
     print("  Loading full dataset (once)...")
     X_all, y_all = _load_full_data(config)
 
-    for split_seed in range(seed_number):
-        print(f"\n{'='*70}")
-        print(f"  Split seed {split_seed}/{seed_number - 1}")
-        print(f"{'='*70}\n")
-
-        # ── 1. Stratified split ──────────────────────────────────────────
-        print("  Splitting data (stratified)...")
-        Xcal, Xpred, ycal, ypred = _split_data_stratified(
-            X_all, y_all, config, split_seed,
+    # ── Parallel execution across split seeds ────────────────────────────
+    results = Parallel(n_jobs=n_jobs, verbose=10)(
+        delayed(_instability_one_seed)(
+            split_seed, seed_number, X_all, y_all, config, model_name,
+            spectral_cuts, smx_seed_number, smx_methods_to_run,
+            selected_methods,
         )
-        print(f"    Xcal: {Xcal.shape}, Xpred: {Xpred.shape}")
+        for split_seed in range(seed_number)
+    )
 
-        # ── 2. Preprocess ────────────────────────────────────────────────
-        print("  Preprocessing...")
-        Xcal_prep, Xpred_prep, _ = preprocess(config, Xcal, Xpred)
-
-        # ── 3. Train model (once per split_seed) ────────────────────────
-        print(f"  Training {model_name}...")
-        result = train_model(model_name, config, Xcal_prep, ycal,
-                             Xpred_prep, ypred)
-
-        # ── 4. Collect performance metrics ───────────────────────────────
-        df_perf = result[0].copy()
-        df_perf.insert(0, 'split_seed', split_seed)
+    # ── Collect results from all seeds ───────────────────────────────────
+    for df_perf, method_outputs in results:
         all_performance.append(df_perf)
-        print(f"  Performance (split_seed={split_seed}):")
-        print(df_perf.to_string(index=False))
-
-        # ── 5. Explanations on training set (reuse same model per split) ──
-        mc = MODEL_CONFIG[model_name]
-        model = mc['model_extractor'](result)
-
-        if smx_methods_to_run:
-            y_pred_cont = extract_y_continuous(model_name, result)
-            y_pred_series = (
-                pd.Series(y_pred_cont.values)
-                if isinstance(y_pred_cont, pd.Series)
-                else pd.Series(y_pred_cont)
+        for method_name in selected_methods:
+            all_method_outputs[method_name].extend(
+                method_outputs.get(method_name, [])
             )
-
-            n_cal = len(Xcal_prep)
-            n_samples_per_bag = max(1, int(n_cal * 0.8))
-            min_samples_per_predicate = max(1, int(n_cal * 0.2))
-
-            # ── Deterministic steps (once per split_seed) ────────────
-            zones_prep = smx.extract_spectral_zones(Xcal_prep, spectral_cuts)
-            aggregator = smx.ZoneAggregator(method='pca')
-            zone_scores = aggregator.fit_transform(zones_prep)
-            pca_info = aggregator.pca_info_
-
-            gen = smx.PredicateGenerator(quantiles=[0.2, 0.4, 0.6, 0.8])
-            gen.fit(zone_scores)
-            predicates_df = gen.predicates_df_
-
-            # ── Incremental seed loop per method ─────────────────────
-            for method_label, metric_type in smx_methods_to_run:
-                metric_column = ('Covariance' if metric_type == 'covariance'
-                                 else 'Perturbation')
-
-                # Build per-seed LRC results incrementally
-                lrc_by_seed = {}
-                for seed_idx in range(smx_seed_number):
-                    print(f"\n  --- SMX ({method_label}) | "
-                          f"split_seed={split_seed} | "
-                          f"computing seed {seed_idx} ---")
-
-                    # Bagging
-                    bagger = smx.PredicateBagger(
-                        n_bags=10,
-                        n_samples_per_bag=n_samples_per_bag,
-                        min_samples_per_predicate=min_samples_per_predicate,
-                        replace=False,
-                        sample_bagging=True,
-                        predicate_bagging=False,
-                        random_seed=seed_idx,
-                    )
-                    bags = bagger.run(zone_scores, y_pred_series, predicates_df)
-
-                    for pred_dict in bags.values():
-                        for df_info in pred_dict.values():
-                            df_info['Class_Predicted'] = np.where(
-                                df_info['Predicted_Y'] >= 0.5, 'A', 'B'
-                            )
-
-                    # Metric
-                    if metric_type == 'covariance':
-                        metric_obj = smx.CovarianceMetric(
-                            metric='covariance', threshold=0.01,
-                        )
-                    else:
-                        metric_obj = smx.PerturbationMetric(
-                            estimator=model,
-                            Xcalclass_prep=Xcal_prep,
-                            predicates_df=predicates_df,
-                            spectral_cuts=spectral_cuts,
-                            perturbation_mode='median',
-                            stats_source='full',
-                            metric=mc['perturbation_metric'],
-                            normalize_by_zone_size=True,
-                            zone_size_exponent=1.0,
-                        )
-                    rankings = metric_obj.compute(bags)
-
-                    # Graph
-                    builder = smx.PredicateGraphBuilder(
-                        random_state=seed_idx,
-                        show_details=False,
-                        var_exp=True,
-                        pca_info_dict=pca_info,
-                    )
-                    graph = builder.build(
-                        bags, rankings, metric_column=metric_column,
-                    )
-
-                    # LRC
-                    predicate_nodes = [
-                        n for n, attr in graph.nodes(data=True)
-                        if attr.get('node_type') == 'predicate'
-                    ]
-                    if not predicate_nodes:
-                        print(f"    WARNING: Seed {seed_idx} produced "
-                              f"empty graph — skipping.")
-                        continue
-
-                    lrc_df_seed = smx.compute_lrc(graph, predicates_df)
-                    lrc_df_seed['Seed'] = seed_idx
-                    lrc_by_seed[seed_idx] = lrc_df_seed
-
-                    # Progressive aggregation: use all seeds computed so far
-                    valid_seeds = list(lrc_by_seed.keys())
-                    n_smx_seeds = seed_idx + 1
-                    lrc_summed, _ = smx.aggregate_lrc_across_seeds(
-                        lrc_by_seed, valid_seeds,
-                    )
-
-                    print(f"    Aggregated smx_seeds={list(range(n_smx_seeds))}")
-
-                    lrc_out = lrc_summed.copy()
-                    lrc_out.insert(0, 'split_seed', split_seed)
-                    lrc_out['smx_seeds_used'] = n_smx_seeds
-                    lrc_out['smx_seed_number'] = smx_seed_number
-                    lrc_out['method'] = method_label
-                    lrc_out['model'] = model_name
-                    all_method_outputs[method_label].append(lrc_out)
-
-        if 'shap' in selected_methods:
-            print(f"\n  --- SHAP explanation | split_seed={split_seed} ---")
-            shap_df = _shap_importance_from_model(model_name, model, Xcal_prep)
-            shap_out = _format_instability_energy_output(
-                shap_df,
-                score_col='Mean_Abs_SHAP',
-                spectral_cuts=spectral_cuts,
-                split_seed=split_seed,
-                model_name=model_name,
-                method_name='shap',
-            )
-            all_method_outputs['shap'].append(shap_out)
-
-        if 'permutation' in selected_methods:
-            print(f"\n  --- Permutation explanation | split_seed={split_seed} ---")
-            perm_df = _permutation_importance_from_model(model_name, model, Xcal_prep)
-            perm_out = _format_instability_energy_output(
-                perm_df,
-                score_col='Permutation_importance',
-                spectral_cuts=spectral_cuts,
-                split_seed=split_seed,
-                model_name=model_name,
-                method_name='permutation',
-            )
-            all_method_outputs['permutation'].append(perm_out)
 
     # ── 6. Export results ────────────────────────────────────────────────
     if all_performance:
@@ -1086,6 +1119,9 @@ Examples:
     parser.add_argument('--smx_seed_number', type=int, default=4,
                         help='Number of internal SMX bagging seeds for '
                              '--instability (seeds 0..M-1, default: 4)')
+    parser.add_argument('--n_jobs', type=int, default=-1,
+                        help='Number of parallel workers for instability '
+                             'split seeds. -1 = all cores (default: -1)')
     args = parser.parse_args()
 
     if not args.rbo and not args.faithfulness and not args.instability:
@@ -1106,7 +1142,8 @@ Examples:
                     run_instability(ds, mdl,
                                     seed_number=args.seed_number,
                                     smx_seed_number=args.smx_seed_number,
-                                    method=args.method)
+                                    method=args.method,
+                                    n_jobs=args.n_jobs)
             except Exception as e:
                 print(f"\nERROR running analysis for {ds}/{mdl}: {e}")
                 import traceback
