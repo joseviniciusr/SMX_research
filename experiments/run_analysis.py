@@ -158,13 +158,17 @@ def _permutation_importance_from_model(model_name, model, X,
     baseline_pred = predict_fn(X)
     X_values = X.values  # avoid repeated DataFrame overhead
 
+    col_names = X.columns
+
     def _importance_for_col(col_idx, col_name):
         rng = np.random.RandomState(random_state + col_idx)
         diffs = np.empty(n_repeats)
+        X_perm = X_values.copy()
+        X_buf = pd.DataFrame(X_perm, columns=col_names, copy=False)
         for r in range(n_repeats):
-            X_perm = X_values.copy()
-            X_perm[:, col_idx] = rng.permutation(X_perm[:, col_idx])
-            perm_pred = predict_fn(pd.DataFrame(X_perm, columns=X.columns))
+            X_perm[:, col_idx] = rng.permutation(X_values[:, col_idx])
+            X_buf.values[:] = X_perm
+            perm_pred = predict_fn(X_buf)
             diffs[r] = np.mean(np.abs(baseline_pred - perm_pred))
         return float(diffs.mean())
 
@@ -618,24 +622,28 @@ def run_faithfulness(dataset, model_name, mask_mode='zero', method='all'):
             cols = _zone_cols_cache.get(new_zone, [])
             if cols:
                 X_masked[cols] = _mask_values.get(new_zone, 0.0)
-            y_hat_masked = _predict_classes(model_name, model, X_masked)
-            f1_masked = f1_score(ypred_numeric, y_hat_masked,
-                                 average='weighted', zero_division=0)
-            acc_masked = accuracy_score(ypred_numeric, y_hat_masked)
 
             # Continuous metric: mean_abs_diff (PLS) or probability_shift (SVM/MLP)
+            # For SVM/MLP, derive class predictions from predict_proba to
+            # avoid a redundant kernel evaluation.
             if model_name == 'pls':
                 y_cont_masked = model.predict(X_masked).flatten()
+                y_hat_masked = (y_cont_masked >= 0.5).astype(int)
                 mean_abs_diff = float(np.mean(np.abs(y_cont_orig - y_cont_masked)))
                 cont_metric_name = 'mean_abs_diff'
                 cont_metric_val = mean_abs_diff
             else:
                 prob_masked = model.predict_proba(X_masked)
+                y_hat_masked = np.argmax(prob_masked, axis=1)
                 prob_shift = float(np.mean(
                     np.sum(np.abs(prob_orig - prob_masked), axis=1) / 2.0
                 ))
                 cont_metric_name = 'probability_shift'
                 cont_metric_val = prob_shift
+
+            f1_masked = f1_score(ypred_numeric, y_hat_masked,
+                                 average='weighted', zero_division=0)
+            acc_masked = accuracy_score(ypred_numeric, y_hat_masked)
 
             rows.append({
                 'model': model_name,
