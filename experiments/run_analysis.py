@@ -814,55 +814,116 @@ def run_instability(dataset, model_name, seed_number, smx_seed_number,
 
         if smx_methods_to_run:
             y_pred_cont = extract_y_continuous(model_name, result)
-
-            # Common SMX kwargs shared across all metric types and seed subsets
-            _base_kwargs = dict(
-                spectral_cuts=spectral_cuts,
-                quantiles=[0.2, 0.4, 0.6, 0.8],
-                n_bags=10,
-                n_samples_fraction=0.8,
-                min_samples_fraction=0.2,
-                var_exp=True,
+            y_pred_series = (
+                pd.Series(y_pred_cont.values)
+                if isinstance(y_pred_cont, pd.Series)
+                else pd.Series(y_pred_cont)
             )
 
-            # Progressive SMX internal seeds: [0], [0,1], [0,1,2], ...
+            n_cal = len(Xcal_prep)
+            n_samples_per_bag = max(1, int(n_cal * 0.8))
+            min_samples_per_predicate = max(1, int(n_cal * 0.2))
+
+            # ── Deterministic steps (once per split_seed) ────────────
+            zones_prep = smx.extract_spectral_zones(Xcal_prep, spectral_cuts)
+            aggregator = smx.ZoneAggregator(method='pca')
+            zone_scores = aggregator.fit_transform(zones_prep)
+            pca_info = aggregator.pca_info_
+
+            gen = smx.PredicateGenerator(quantiles=[0.2, 0.4, 0.6, 0.8])
+            gen.fit(zone_scores)
+            predicates_df = gen.predicates_df_
+
+            # ── Incremental seed loop per method ─────────────────────
             for method_label, metric_type in smx_methods_to_run:
-                for n_smx_seeds in range(1, smx_seed_number + 1):
-                    smx_seeds_list = list(range(n_smx_seeds))
-                    print(f"\n  --- SMX pipeline ({method_label}) | "
+                metric_column = ('Covariance' if metric_type == 'covariance'
+                                 else 'Perturbation')
+
+                # Build per-seed LRC results incrementally
+                lrc_by_seed = {}
+                for seed_idx in range(smx_seed_number):
+                    print(f"\n  --- SMX ({method_label}) | "
                           f"split_seed={split_seed} | "
-                          f"smx_seeds={smx_seeds_list} ---")
+                          f"computing seed {seed_idx} ---")
 
-                    _iter_kwargs = dict(_base_kwargs, seeds=smx_seeds_list)
+                    # Bagging
+                    bagger = smx.PredicateBagger(
+                        n_bags=10,
+                        n_samples_per_bag=n_samples_per_bag,
+                        min_samples_per_predicate=min_samples_per_predicate,
+                        replace=False,
+                        sample_bagging=True,
+                        predicate_bagging=False,
+                        random_seed=seed_idx,
+                    )
+                    bags = bagger.run(zone_scores, y_pred_series, predicates_df)
 
+                    for pred_dict in bags.values():
+                        for df_info in pred_dict.values():
+                            df_info['Class_Predicted'] = np.where(
+                                df_info['Predicted_Y'] >= 0.5, 'A', 'B'
+                            )
+
+                    # Metric
                     if metric_type == 'covariance':
-                        _iter_kwargs.update(
-                            metric='covariance',
-                            covariance_threshold=0.01,
+                        metric_obj = smx.CovarianceMetric(
+                            metric='covariance', threshold=0.01,
                         )
                     else:
-                        _iter_kwargs.update(
-                            metric='perturbation',
+                        metric_obj = smx.PerturbationMetric(
                             estimator=model,
+                            Xcalclass_prep=Xcal_prep,
+                            predicates_df=predicates_df,
+                            spectral_cuts=spectral_cuts,
                             perturbation_mode='median',
-                            perturbation_metric=mc['perturbation_metric'],
+                            stats_source='full',
+                            metric=mc['perturbation_metric'],
                             normalize_by_zone_size=True,
                             zone_size_exponent=1.0,
                         )
+                    rankings = metric_obj.compute(bags)
 
-                    try:
-                        explainer = SMX(**_iter_kwargs)
-                        explainer.fit(Xcal_prep, y_pred_cont, X_cal_natural=Xcal)
-                        lrc_out = explainer.lrc_summed_.copy()
-                        lrc_out.insert(0, 'split_seed', split_seed)
-                        lrc_out['smx_seeds_used'] = n_smx_seeds
-                        lrc_out['smx_seed_number'] = smx_seed_number
-                        lrc_out['method'] = method_label
-                        lrc_out['model'] = model_name
-                        all_method_outputs[method_label].append(lrc_out)
-                    except RuntimeError as exc:
-                        print(f"    WARNING: {exc}")
+                    # Graph
+                    builder = smx.PredicateGraphBuilder(
+                        random_state=seed_idx,
+                        show_details=False,
+                        var_exp=True,
+                        pca_info_dict=pca_info,
+                    )
+                    graph = builder.build(
+                        bags, rankings, metric_column=metric_column,
+                    )
+
+                    # LRC
+                    predicate_nodes = [
+                        n for n, attr in graph.nodes(data=True)
+                        if attr.get('node_type') == 'predicate'
+                    ]
+                    if not predicate_nodes:
+                        print(f"    WARNING: Seed {seed_idx} produced "
+                              f"empty graph — skipping.")
                         continue
+
+                    lrc_df_seed = smx.compute_lrc(graph, predicates_df)
+                    lrc_df_seed['Seed'] = seed_idx
+                    lrc_by_seed[seed_idx] = lrc_df_seed
+
+                    # Progressive aggregation: use all seeds computed so far
+                    valid_seeds = list(lrc_by_seed.keys())
+                    n_smx_seeds = seed_idx + 1
+                    lrc_summed, _ = smx.aggregate_lrc_across_seeds(
+                        lrc_by_seed, valid_seeds,
+                    )
+
+                    print(f"    Aggregated smx_seeds={list(range(n_smx_seeds))}")
+
+                    lrc_out = lrc_summed.copy()
+                    lrc_out.insert(0, 'split_seed', split_seed)
+                    lrc_out['smx_seeds_used'] = n_smx_seeds
+                    lrc_out['smx_seed_number'] = smx_seed_number
+                    lrc_out['method'] = method_label
+                    lrc_out['model'] = model_name
+                    all_method_outputs[method_label].append(lrc_out)
 
         if 'shap' in selected_methods:
             print(f"\n  --- SHAP explanation | split_seed={split_seed} ---")
