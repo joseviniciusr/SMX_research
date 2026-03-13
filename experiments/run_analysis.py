@@ -34,6 +34,9 @@ Usage:
     python experiments/run_analysis.py --instability --dataset soil --model mlp --seed_number 5 --smx_seed_number 4
     python experiments/run_analysis.py --instability --dataset bank_notes --model pls --seed_number 20 --smx_seed_number 4
     python experiments/run_analysis.py --instability --dataset all --model all --seed_number 10 --smx_seed_number 3 --method smx_perturbation
+    python experiments/run_analysis.py --instability --dataset all --model all --seed_number 10 --smx_seed_number 3 --method shap permutation
+    python experiments/run_analysis.py --instability --dataset all --model all --seed_number 10 --smx_seed_number 3 --method all
+
 """
 
 import argparse
