@@ -7,7 +7,7 @@ Available analyses (select via flags):
                    run_shap, and run_permutation.
   --faithfulness   Faithfulness evaluation: progressively mask top-k ranked
                    zones and measure F1 / Accuracy degradation for each XAI
-                   method (SMX, SHAP, Permutation).
+                   method (SMX, SHAP, Permutation, and for PLS: VIP, reg_vet).
   --instability    Stability evaluation: vary the global split seed to produce
                    different stratified train/test partitions, train the model
                    for each split, run the full SMX pipeline (via the ``SMX``
@@ -273,7 +273,8 @@ def _get_zone_columns(zone_name, spectral_cuts, all_columns):
     return list(all_columns[mask])
 
 
-def _collect_zone_rankings(output_dir, dataset_name, spectral_cuts):
+def _collect_zone_rankings(output_dir, dataset_name, spectral_cuts,
+                           model_name, method='perturbation'):
     """Read pre-computed ranking CSVs and return a dict of zone rankings.
 
     Returns ``{method_label: [zone_name_rank1, zone_name_rank2, ...]}``.
@@ -282,10 +283,17 @@ def _collect_zone_rankings(output_dir, dataset_name, spectral_cuts):
     """
     rankings = {}
 
-    # SMX (LRC perturbation)
-    lrc_path = output_dir / 'lrc_pert_natural.csv'
-    if lrc_path.exists():
-        rankings['SMX'] = _zone_ranking_from_lrc(lrc_path)
+    # SMX (LRC perturbation / covariance)
+    if method in ('perturbation', 'all'):
+        lrc_path = output_dir / 'lrc_pert_natural.csv'
+        if lrc_path.exists():
+            key = 'SMX' if method != 'all' else 'SMX_perturbation'
+            rankings[key] = _zone_ranking_from_lrc(lrc_path)
+
+    if method in ('covariance', 'all'):
+        lrc_cov_path = output_dir / 'lrc_cov_natural.csv'
+        if lrc_cov_path.exists():
+            rankings['SMX_covariance'] = _zone_ranking_from_lrc(lrc_cov_path)
 
     # SHAP
     shap_path = output_dir / f'shap_{dataset_name}.csv'
@@ -300,6 +308,20 @@ def _collect_zone_rankings(output_dir, dataset_name, spectral_cuts):
         rankings['Permutation'] = _zone_ranking_from_per_energy_csv(
             perm_path, 'Permutation_importance', spectral_cuts,
         )
+
+    # PLS-only model-specific explainers
+    if model_name == 'pls':
+        vip_path = output_dir / f'vip_{dataset_name}.csv'
+        if vip_path.exists():
+            rankings['VIP'] = _zone_ranking_from_per_energy_csv(
+                vip_path, 'VIP_Score', spectral_cuts,
+            )
+
+        reg_path = output_dir / f'reg_coef_{dataset_name}.csv'
+        if reg_path.exists():
+            rankings['Reg_vet'] = _zone_ranking_from_per_energy_csv(
+                reg_path, 'Abs_Reg_coef', spectral_cuts,
+            )
 
     # Drop NaN / None entries that may arise from unmapped energies
     for key in rankings:
@@ -369,6 +391,10 @@ def run_faithfulness(dataset, model_name, mask_mode='zero', method='perturbation
     For every available XAI method, progressively mask top-k zones and
     measure the degradation of F1 and Accuracy on the prediction set.
 
+    Included methods depend on available files and model type:
+    * all models: SMX (LRC perturbation/covariance), SHAP, Permutation
+    * PLS only: VIP and reg_vet (from ``vip_*.csv`` and ``reg_coef_*.csv``)
+
     Parameters
     ----------
     dataset : str
@@ -401,7 +427,10 @@ def run_faithfulness(dataset, model_name, mask_mode='zero', method='perturbation
         return
 
     # ── 1. Collect available zone rankings ───────────────────────────────
-    rankings = _collect_zone_rankings(output_dir, dataset_name, spectral_cuts)
+    rankings = _collect_zone_rankings(
+        output_dir, dataset_name, spectral_cuts,
+        model_name=model_name, method=method,
+    )
     if not rankings:
         print("  No XAI ranking files found — nothing to evaluate.")
         return
@@ -782,7 +811,8 @@ Examples:
     parser.add_argument('--rbo', action='store_true',
                         help='Build feature_importance.csv and rbo_rank.csv')
     parser.add_argument('--faithfulness', action='store_true',
-                        help='Run faithfulness evaluation (progressive zone masking)')
+                        help='Run faithfulness evaluation (progressive zone masking; '
+                            'includes VIP/reg_vet for PLS when available)')
     parser.add_argument('--mask_mode', default='zero',
                         choices=['zero', 'median', 'mean'],
                         help='Masking strategy for faithfulness (default: zero)')
